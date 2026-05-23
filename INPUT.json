@@ -1,0 +1,8 @@
+{
+    "startUrls": [
+        "https://jobs.lever.co/spotify"
+    ],
+    "results_wanted": 20,
+    "max_pages": 5,
+    "allow_html_detail_fallback": false
+}

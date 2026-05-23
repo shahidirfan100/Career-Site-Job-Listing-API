@@ -1,0 +1,52 @@
+{
+    "actorSpecification": 1,
+    "fields": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "type": "object",
+        "properties": {
+            "job_id": { "title": "Job ID", "type": "string", "description": "Platform-specific job identifier" },
+            "title": { "title": "Job Title", "type": "string", "description": "Title of the job posting" },
+            "company": { "title": "Company", "type": "string", "description": "Company name" },
+            "location": { "title": "Location", "type": "string", "description": "Job location (city, state, country)" },
+            "city": { "title": "City", "type": "string", "description": "Job city if available" },
+            "state": { "title": "State / Region", "type": "string", "description": "Job state or region if available" },
+            "country": { "title": "Country", "type": "string", "description": "Job country if available" },
+            "team": { "title": "Team", "type": "string", "description": "Team name if available" },
+            "department": { "title": "Department", "type": "string", "description": "Team or department" },
+            "job_type": { "title": "Job Type", "type": "string", "description": "Employment type (Full-time, Part-time, Contract, etc.)" },
+            "workplace_type": { "title": "Workplace Type", "type": "string", "description": "On-site, hybrid, or remote marker from source" },
+            "remote_type": { "title": "Remote Type", "type": "string", "description": "Source remote label when not a strict boolean" },
+            "date_posted": { "title": "Date Posted", "type": "string", "description": "Date job was published (YYYY-MM-DD)" },
+            "updated_at": { "title": "Updated At", "type": "string", "description": "Last updated date if available" },
+            "url": { "title": "Job URL", "type": "string", "description": "Link to the job posting" },
+            "apply_url": { "title": "Apply URL", "type": "string", "description": "Direct application link" },
+            "description": { "title": "Description", "type": "string", "description": "Job description text" },
+            "remote": { "title": "Remote", "type": "boolean", "description": "Whether the position is remote" },
+            "platform": { "title": "Platform", "type": "string", "description": "ATS platform (lever, greenhouse, ashby, etc.)" },
+            "source_host": { "title": "Source Host", "type": "string", "description": "Hostname where the job was sourced from" },
+            "scraped_at": { "title": "Scraped At", "type": "string", "description": "Extraction timestamp in ISO format" }
+        }
+    },
+    "views": {
+        "overview": {
+            "title": "Overview",
+            "transformation": {
+                "fields": ["job_id", "title", "company", "location", "department", "job_type", "date_posted", "url", "platform"]
+            },
+            "display": {
+                "component": "table",
+                "properties": {
+                    "job_id": { "label": "Job ID", "format": "text" },
+                    "title": { "label": "Job Title", "format": "text" },
+                    "company": { "label": "Company", "format": "text" },
+                    "location": { "label": "Location", "format": "text" },
+                    "department": { "label": "Department", "format": "text" },
+                    "job_type": { "label": "Type", "format": "text" },
+                    "date_posted": { "label": "Posted", "format": "text" },
+                    "url": { "label": "URL", "format": "link" },
+                    "platform": { "label": "Platform", "format": "text" }
+                }
+            }
+        }
+    }
+}
