@@ -1,6 +1,6 @@
 # Career Site Job Listing Scraper
 
-Extract job listings from major ATS career platforms using a single `startUrl`. Collect clean, structured, and rich job records for sourcing, research, monitoring, and automation workflows.
+Extract job listings from major ATS career platforms using one or more URLs in `startUrls`. Collect clean, structured, and rich job records for sourcing, research, monitoring, and automation workflows.
 
 ## Features
 
@@ -30,9 +30,10 @@ Analyze demand trends by title, location, function, and employment type using no
 
 | Parameter | Type | Required | Default | Description |
 |---|---|---|---|---|
-| `startUrl` | String | Yes | — | Career board URL for one supported ATS platform. |
+| `startUrls` | Array<String> | Yes | — | One or more career board URLs for supported ATS platforms. |
 | `results_wanted` | Integer | No | `20` | Maximum jobs to save. |
 | `max_pages` | Integer | No | `5` | Page/offset safety cap for paginated sources. |
+| `allow_html_detail_fallback` | Boolean | No | `false` | Optional detail-page enrichment for BreezyHR, iCIMS, and Taleo when API/feed descriptions are missing. |
 | `proxyConfiguration` | Object | No | — | Optional Apify proxy settings. |
 
 ---
@@ -112,32 +113,27 @@ Each dataset item can include:
 
 ## Usage Examples
 
-### Lever Example
+### Single Board (Lever)
 
 ```json
 {
-    "startUrl": "https://jobs.lever.co/spotify",
+    "startUrls": ["https://jobs.lever.co/spotify"],
     "results_wanted": 20
 }
 ```
 
-### Workday Example
+### Multi-board Run
 
 ```json
 {
-    "startUrl": "https://sony.wd1.myworkdayjobs.com/SonyCareers",
+    "startUrls": [
+        "https://jobs.lever.co/spotify",
+        "https://job-boards.greenhouse.io/iherb",
+        "https://careersen-hrrh.icims.com/jobs/search?ss=1"
+    ],
     "results_wanted": 30,
-    "max_pages": 8
-}
-```
-
-### Workable Example
-
-```json
-{
-    "startUrl": "https://apply.workable.com/careers/",
-    "results_wanted": 25,
-    "max_pages": 3
+    "max_pages": 8,
+    "allow_html_detail_fallback": true
 }
 ```
 
@@ -207,7 +203,7 @@ Connect dataset output with:
 Some public examples go stale, change slugs, or disable public listings. Use the Google search commands above to find fresh company board URLs.
 
 ### Does one input work for all platforms?
-Yes. Use `startUrl` and the actor auto-detects the platform.
+Yes. Use `startUrls` and the actor auto-detects each board URL.
 
 ### Are duplicate records removed?
 Yes. The actor deduplicates by platform, ID/link, title, and company before saving.
