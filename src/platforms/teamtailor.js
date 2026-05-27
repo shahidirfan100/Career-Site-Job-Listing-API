@@ -37,8 +37,12 @@ export async function scrape({ slug, rawUrl }, { resultsWanted, proxyUrl } = {})
                     'Referer': base,
                 },
             });
-            // Response may be array or { jobs: [...] } or { data: [...] }
-            const arr = Array.isArray(data) ? data : (data?.jobs ?? data?.data ?? null);
+            // Response may be:
+            // - array
+            // - { jobs: [...] }
+            // - { data: [...] }
+            // - JSON Feed format { items: [...] }
+            const arr = Array.isArray(data) ? data : (data?.jobs ?? data?.data ?? data?.items ?? null);
             if (Array.isArray(arr) && arr.length >= 0) {
                 jobs = arr;
                 log.info(`[TeamTailor] Found ${jobs.length} jobs via ${url}`);
@@ -60,9 +64,10 @@ export async function scrape({ slug, rawUrl }, { resultsWanted, proxyUrl } = {})
         // TeamTailor JSON API wraps attributes in j.attributes
         const attr = j.attributes ?? j;
         const jobId = j.id ?? attr.id;
+        const isFeedItem = !!(j.title && j.url && !j.attributes);
         return cleanObj({
             job_id: jobId || null,
-            title: attr.title || attr.name || null,
+            title: attr.title || attr.name || (isFeedItem ? j.title : null),
             company: slug,
             location: attr.location || attr.city || null,
             city: attr.city || null,
@@ -70,12 +75,14 @@ export async function scrape({ slug, rawUrl }, { resultsWanted, proxyUrl } = {})
             department: null,
             workplace_type: attr.remote_status || null,
             job_type: attr['employment-type'] || attr.employment_type || null,
-            date_posted: parseDate(attr['created-at'] || attr.created_at),
-            updated_at: parseDate(attr['updated-at'] || attr.updated_at || attr['created-at'] || attr.created_at),
-            url: attr['career-page-url'] || (jobId ? `${base}/jobs/${jobId}` : null),
-            apply_url: attr['apply-url'] || null,
+            date_posted: parseDate(attr['created-at'] || attr.created_at || j.date_published),
+            updated_at: parseDate(attr['updated-at'] || attr.updated_at || attr['created-at'] || attr.created_at || j.date_modified || j.date_published),
+            url: attr['career-page-url'] || j.url || (jobId ? `${base}/jobs/${jobId}` : null),
+            apply_url: attr['apply-url'] || j.url || null,
             description: stripHtml(
                 attr.body
+                || j.content_text
+                || j.content_html
                 || attr.description
                 || attr['job-description']
                 || attr.pitch,

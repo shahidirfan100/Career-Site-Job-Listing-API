@@ -37,7 +37,7 @@ const parseXmlJobs = (xmlText, host, slug) => {
     const $ = cheerioLoad(xmlText || '', { xmlMode: true });
     const positions = [];
 
-    $('position').each((_, el) => {
+    $('position').each((_positionIdx, el) => {
         const id = $(el).find('id').first().text().trim();
         const title = $(el).find('name').first().text().trim();
         const office = $(el).find('office').first().text().trim();
@@ -48,7 +48,7 @@ const parseXmlJobs = (xmlText, host, slug) => {
 
         // Collect descriptions
         const descParts = [];
-        $(el).find('jobDescription').each((_, descEl) => {
+        $(el).find('jobDescription').each((_descriptionIdx, descEl) => {
             const partName = $(descEl).find('name').first().text().trim();
             const partVal = $(descEl).find('value').first().text().trim();
             const cleanVal = stripHtml(partVal);

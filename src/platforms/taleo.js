@@ -74,6 +74,86 @@ const buildFeedCandidates = ({ host, section }) => {
     return [...new Set(candidates)];
 };
 
+const parseSearchEmbeddedJobs = (html) => {
+    const jobs = [];
+    const seen = new Set();
+    const re = /Submission for the position:\s*([^']+?)\s*-\s*\(Job Number:\s*(\d+)\)/g;
+    let match;
+    while ((match = re.exec(html)) !== null) {
+        const title = (match[1] || '').replace(/%26/g, '&').replace(/\s+/g, ' ').trim();
+        const jobNumber = (match[2] || '').trim();
+        if (!jobNumber || seen.has(jobNumber)) continue;
+        seen.add(jobNumber);
+        jobs.push({ title, jobNumber });
+    }
+    return jobs;
+};
+
+const extractDetailFromHtml = (html) => {
+    const text = cheerioLoad(html).root().text().replace(/\s+/g, ' ').trim();
+    const location = text.match(/Primary Location\s+(.+?)\s+NATO Body/i)?.[1]?.trim()
+        || text.match(/Primary Location\s+(.+?)\s+Schedule/i)?.[1]?.trim()
+        || undefined;
+    const deadline = text.match(/Application Deadline\s+(.+?)\s+Salary/i)?.[1]?.trim()
+        || text.match(/Application Deadline\s+(.+?)\s+Description/i)?.[1]?.trim()
+        || undefined;
+    const description = text.match(/Description\s*:?\s+(.+?)\s+(YOUR QUALIFICATIONS|HOW TO APPLY|CONTRACT|SALARY\/BENEFITS)/i)?.[1]?.trim()
+        || undefined;
+    return {
+        location,
+        date_posted: toIsoDate(deadline),
+        description,
+    };
+};
+
+const scrapeFromSearchPageFallback = async ({ host, section, slug, rawUrl, proxyUrl, resultsWanted }) => {
+    const searchUrl = rawUrl || `https://${host}/careersection/${section || '2'}/jobsearch.ftl?lang=en`;
+    const searchResp = await gotScraping({
+        url: searchUrl,
+        proxyUrl,
+        responseType: 'text',
+        throwHttpErrors: false,
+        timeout: { request: 30_000 },
+    });
+    if ((searchResp.statusCode || 0) >= 400) return [];
+
+    const searchHtml = String(searchResp.body || '');
+    const embedded = parseSearchEmbeddedJobs(searchHtml).slice(0, resultsWanted || 20);
+    const jobs = [];
+
+    for (const item of embedded) {
+        const detailUrl = `https://${host}/careersection/${section || '2'}/jobdetail.ftl?job=${item.jobNumber}&lang=en`;
+        let detail = {};
+        try {
+            const detailResp = await gotScraping({
+                url: detailUrl,
+                proxyUrl,
+                responseType: 'text',
+                throwHttpErrors: false,
+                timeout: { request: 30_000 },
+            });
+            if ((detailResp.statusCode || 0) < 400) {
+                detail = extractDetailFromHtml(String(detailResp.body || ''));
+            }
+        } catch (err) {
+            log.debug(`[Taleo] Detail fallback failed for ${detailUrl}: ${err.message}`);
+        }
+
+        jobs.push({
+            job_id: item.jobNumber,
+            title: item.title || `Job ${item.jobNumber}`,
+            company: slug,
+            url: detailUrl,
+            apply_url: detailUrl,
+            platform: 'taleo',
+            ats_family: 'taleo',
+            ...detail,
+        });
+    }
+
+    return jobs;
+};
+
 /**
  * Scrape Taleo jobs from built-in RSS feed endpoints (API/feed-based).
  */
@@ -116,6 +196,19 @@ export async function scrape({ rawUrl, slug, section }, { resultsWanted = 20, pr
     }
 
     const limitedJobs = resultsWanted ? jobs.slice(0, resultsWanted) : jobs;
+
+    if (!limitedJobs.length) {
+        log.warning(`[Taleo] RSS feed returned no usable jobs. Trying search-page embedded data fallback.`);
+        const fallbackJobs = await scrapeFromSearchPageFallback({
+            host: parsed.host,
+            section,
+            slug,
+            rawUrl,
+            proxyUrl,
+            resultsWanted,
+        });
+        if (fallbackJobs.length) return fallbackJobs;
+    }
 
     if (allowHtmlDetailFallback) {
         for (const job of limitedJobs) {

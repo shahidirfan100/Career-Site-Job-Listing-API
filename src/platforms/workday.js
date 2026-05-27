@@ -53,6 +53,27 @@ const deriveConfigFromUrl = (rawUrl) => {
     const tenant = parsed.hostname.split('.')[0];
     const pathSegments = parsed.pathname.split('/').filter(Boolean).map((s) => s.trim()).filter(Boolean);
 
+    const recruitingIndex = pathSegments.findIndex((s) => s.toLowerCase() === 'recruiting');
+    if (recruitingIndex >= 0 && pathSegments[recruitingIndex + 1]) {
+        const tenantFromPath = pathSegments[recruitingIndex + 1];
+        const boardFromPath = pathSegments[recruitingIndex + 2] || 'external';
+        const jobsUrlCandidates = dedupeStrings([
+            `${origin}/wday/cxs/${tenantFromPath}/${boardFromPath}/jobs`,
+            `${origin}/wday/cxs/${tenantFromPath}/${boardFromPath.toLowerCase()}/jobs`,
+        ]);
+        const jobsUrlBase = jobsUrlCandidates[0];
+        const publicBase = `${origin}/${pathSegments.slice(0, recruitingIndex + 3).join('/')}`.replace(/\/+$/, '');
+        return {
+            origin,
+            tenant: tenantFromPath,
+            jobsUrl: jobsUrlBase,
+            jobsUrlCandidates,
+            jobsApiBase: jobsUrlBase.replace(/\/jobs$/, ''),
+            publicBase,
+            referer: rawUrl,
+        };
+    }
+
     if (parsed.pathname.includes('/wday/cxs/')) {
         const cxsIndex = pathSegments.findIndex((s) => s === 'wday');
         if (cxsIndex === -1 || cxsIndex + 2 >= pathSegments.length) {

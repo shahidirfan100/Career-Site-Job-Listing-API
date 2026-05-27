@@ -19,6 +19,67 @@ import { detectPlatform } from './utils/detector.js';
 
 await Actor.init();
 
+const TRACKING_QUERY_PARAMS = new Set([
+    'utm_source',
+    'utm_medium',
+    'utm_campaign',
+    'utm_term',
+    'utm_content',
+    'utm_id',
+    'utm_reader',
+    'utm_name',
+    'utm_cid',
+    'utm_referrer',
+    'utm_viz_id',
+    'ref',
+    'source',
+    'fbclid',
+    'gclid',
+    'mc_cid',
+    'mc_eid',
+    'igshid',
+]);
+
+function canonicalizeUrl(value) {
+    const asText = toText(value);
+    if (!asText) return '';
+    try {
+        const parsed = new URL(asText);
+        parsed.hash = '';
+        for (const key of [...parsed.searchParams.keys()]) {
+            const lower = key.toLowerCase();
+            if (lower.startsWith('utm_') || TRACKING_QUERY_PARAMS.has(lower)) {
+                parsed.searchParams.delete(key);
+            }
+        }
+        if (parsed.pathname.length > 1) {
+            parsed.pathname = parsed.pathname.replace(/\/+$/, '');
+        }
+        return parsed.toString();
+    } catch {
+        return asText;
+    }
+}
+
+function pruneEmptyDeep(value) {
+    if (value === null || value === undefined) return undefined;
+    if (typeof value === 'string') {
+        const trimmed = value.trim();
+        return trimmed || undefined;
+    }
+    if (Array.isArray(value)) {
+        const cleaned = value.map((item) => pruneEmptyDeep(item)).filter((item) => item !== undefined);
+        return cleaned.length ? cleaned : undefined;
+    }
+    if (typeof value === 'object') {
+        const entries = Object.entries(value)
+            .map(([key, item]) => [key, pruneEmptyDeep(item)])
+            .filter(([, item]) => item !== undefined);
+        return entries.length ? Object.fromEntries(entries) : undefined;
+    }
+    return value;
+}
+
 function toText(value) {
     if (value === null || value === undefined) return '';
     if (typeof value === 'string') return value.trim();
@@ -89,7 +150,8 @@ function normalizeJob(job) {
 
     normalized.title = typeof normalized.title === 'string' ? normalized.title : '';
     normalized.company = typeof normalized.company === 'string' ? normalized.company : '';
-    normalized.url = typeof normalized.url === 'string' ? normalized.url : '';
+    normalized.url = canonicalizeUrl(normalized.url);
+    normalized.apply_url = canonicalizeUrl(normalized.apply_url || normalized.url);
 
     if (!normalized.title || !normalized.url) return null;
 
@@ -118,9 +180,9 @@ function normalizeJob(job) {
         }
     })();
 
-    return Object.fromEntries(
-        Object.entries(normalized).filter(([, value]) => value !== undefined && value !== ''),
-    );
+    const cleaned = pruneEmptyDeep(normalized);
+    if (!cleaned || typeof cleaned !== 'object') return null;
+    return cleaned;
 }
 
 function dedupeJobs(jobs) {

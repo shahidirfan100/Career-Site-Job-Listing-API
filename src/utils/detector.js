@@ -8,6 +8,8 @@ export function detectPlatform(rawUrl) {
 
     const host = u.hostname.toLowerCase();
     const parts = u.pathname.split('/').filter(Boolean);
+    const firstPart = parts[0] || null;
+    const localePattern = /^[a-z]{2}(?:-[a-z]{2})?$/i;
 
     // ── Lever ───────────────────────────────────────────────────────────────
     if (host === 'jobs.lever.co' || host === 'jobs.eu.lever.co') {
@@ -17,7 +19,11 @@ export function detectPlatform(rawUrl) {
 
     // ── Greenhouse ──────────────────────────────────────────────────────────
     if (host === 'job-boards.greenhouse.io' || host === 'boards.greenhouse.io') {
-        const slug = parts[0];
+        let slug = firstPart;
+        if (slug === 'embed' || slug === 'job_board' || slug === 'job_app') {
+            slug = u.searchParams.get('for')
+                || u.searchParams.get('company');
+        }
         if (slug) return { platform: 'greenhouse', slug };
     }
 
@@ -28,7 +34,7 @@ export function detectPlatform(rawUrl) {
     }
 
     // ── SmartRecruiters ─────────────────────────────────────────────────────
-    if (host === 'careers.smartrecruiters.com') {
+    if (host === 'careers.smartrecruiters.com' || host === 'jobs.smartrecruiters.com') {
         const slug = parts[0];
         if (slug) return { platform: 'smartrecruiters', slug };
     }
@@ -60,11 +66,110 @@ export function detectPlatform(rawUrl) {
     // ── Workday ──────────────────────────────────────────────────────────────
     const wdMatch = host.match(/^(.+)\.(wd\d+)\.myworkdayjobs\.com$/);
     if (wdMatch) {
+        let board = firstPart || 'Careers';
+        if (localePattern.test(board) && parts[1]) board = parts[1];
         return {
             platform: 'workday',
             slug: wdMatch[1],
             instance: wdMatch[2],
-            board: parts[0] || 'Careers',
+            board,
+            rawUrl,
+        };
+    }
+    if (host.endsWith('.myworkdayjobs.com')) {
+        const left = host.replace(/\.myworkdayjobs\.com$/, '');
+        const labels = left.split('.').filter(Boolean);
+        const maybeTenant = labels.find((label) => !/^wd\d+$/i.test(label)) || labels[0];
+        let board = firstPart || 'Careers';
+        if (localePattern.test(board) && parts[1]) board = parts[1];
+        if (maybeTenant) {
+            return {
+                platform: 'workday',
+                slug: maybeTenant,
+                board,
+                rawUrl,
+            };
+        }
+    }
+    if (host.endsWith('.myworkdaysite.com')) {
+        const recruitingIndex = parts.findIndex((part) => part.toLowerCase() === 'recruiting');
+        if (recruitingIndex >= 0) {
+            const slug = parts[recruitingIndex + 1];
+            const board = parts[recruitingIndex + 2] || 'external';
+            if (slug) {
+                return {
+                    platform: 'workday',
+                    slug,
+                    board,
+                    rawUrl,
+                };
+            }
+        }
+        const left = host.replace(/\.myworkdaysite\.com$/, '');
+        const fallbackSlug = left.split('.').find((label) => !/^wd\d+$/i.test(label)) || left.split('.')[0];
+        if (fallbackSlug) {
+            return {
+                platform: 'workday',
+                slug: fallbackSlug,
+                board: 'external',
+                rawUrl,
+            };
+        }
+    }
+    if (host.endsWith('.workday.com') && parts.some((part) => part.toLowerCase() === 'recruiting')) {
+        const recruitingIndex = parts.findIndex((part) => part.toLowerCase() === 'recruiting');
+        const slug = parts[recruitingIndex + 1];
+        const board = parts[recruitingIndex + 2] || 'external';
+        if (slug) {
+            return {
+                platform: 'workday',
+                slug,
+                board,
+                rawUrl,
+            };
+        }
+    }
+
+    // ── Workday CXS direct API URLs ─────────────────────────────────────────
+    if (parts[0] === 'wday' && parts[1] === 'cxs') {
+        const slug = parts[2];
+        const board = parts[3] || 'Careers';
+        if (slug) {
+            return {
+                platform: 'workday',
+                slug,
+                board,
+                rawUrl,
+            };
+        }
+    }
+
+    // ── Workday generic recruiting paths ────────────────────────────────────
+    if (parts.length >= 3 && parts.some((part) => part.toLowerCase() === 'recruiting')) {
+        const recruitingIndex = parts.findIndex((part) => part.toLowerCase() === 'recruiting');
+        const slug = parts[recruitingIndex + 1];
+        const board = parts[recruitingIndex + 2] || 'external';
+        if (slug) {
+            return {
+                platform: 'workday',
+                slug,
+                board,
+                rawUrl,
+            };
+        }
+    }
+
+    // ── Workday legacy fallback based on known data-center label ────────────
+    const wdLooseMatch = host.match(/^(?:([^.]*)\.)?(wd\d+)\./);
+    if (wdLooseMatch) {
+        const slug = wdLooseMatch[1] || 'workday';
+        let board = firstPart || 'Careers';
+        if (localePattern.test(board) && parts[1]) board = parts[1];
+        return {
+            platform: 'workday',
+            slug,
+            instance: wdLooseMatch[2],
+            board,
             rawUrl,
         };
     }
