@@ -19,10 +19,8 @@ export async function scrape({ slug }, { resultsWanted, proxyUrl } = {}) {
     try {
         const account = await fetchJson(`https://www.workable.com/api/accounts/${slug}?details=true`, {
             proxyUrl,
-            headers: {
-                Referer: `https://apply.workable.com/${slug}/`,
-                Origin: 'https://apply.workable.com',
-            },
+            origin: 'https://www.workable.com',
+            referer: `https://apply.workable.com/${slug}/`,
         });
         const jobs = Array.isArray(account?.jobs) ? account.jobs : [];
         if (jobs.length) {
@@ -63,10 +61,8 @@ export async function scrape({ slug }, { resultsWanted, proxyUrl } = {}) {
                 method: 'POST',
                 body,
                 proxyUrl,
-                headers: {
-                    Referer: `https://apply.workable.com/${slug}/`,
-                    Origin: 'https://apply.workable.com',
-                },
+                origin: 'https://apply.workable.com',
+                referer: `https://apply.workable.com/${slug}/`,
             });
         } catch (err) {
             log.error(`[Workable] Fallback API failed for ${slug}: ${err.message}`);

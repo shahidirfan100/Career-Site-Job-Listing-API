@@ -19,7 +19,7 @@ export async function scrape({ slug }, { resultsWanted, proxyUrl } = {}) {
 
     let data;
     try {
-        data = await fetchJson(url, { proxyUrl });
+        data = await fetchJson(url, { proxyUrl, origin: `https://${slug}.recruitee.com`, referer: `https://${slug}.recruitee.com/` });
     } catch (err) {
         log.error(`[Recruitee] API failed for ${slug}: ${err.message}`);
         return [];

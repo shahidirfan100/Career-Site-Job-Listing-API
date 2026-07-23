@@ -13,7 +13,7 @@ export async function scrape({ slug }, { resultsWanted, proxyUrl } = {}) {
 
     let data;
     try {
-        data = await fetchJson(url, { proxyUrl });
+        data = await fetchJson(url, { proxyUrl, origin: 'https://api.ashbyhq.com', referer: `https://jobs.ashbyhq.com/${slug}` });
     } catch (err) {
         log.error(`[Ashby] API request failed for ${slug}: ${err.message}`);
         return [];

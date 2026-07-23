@@ -257,18 +257,26 @@ async function main() {
         allowHtmlDetailFallback: Boolean(allowHtmlDetailFallbackRaw),
     };
 
-    const allJobs = [];
+    let totalSaved = 0;
+    let urlIndex = 0;
 
     for (const candidateUrl of uniqueUrls) {
+        if (totalSaved >= resultsWanted) break;
+        // Jitter delay between different URLs to avoid request pattern detection
+        if (urlIndex > 0) {
+            const delayMs = 1500 + Math.random() * 3500;
+            log.info(`Waiting ${Math.round(delayMs)}ms before processing next URL...`);
+            await new Promise((r) => { setTimeout(r, delayMs); });
+        }
+        urlIndex++;
         const detected = detectPlatform(candidateUrl);
         if (!detected) {
             log.error(`Could not detect the ATS platform from URL: ${candidateUrl}`);
-            log.info('Supported platforms: Lever, Greenhouse, Ashby, SmartRecruiters, Workable, Recruitee, BreezyHR, BambooHR, Workday, TeamTailor, Personio, JazzHR, iCIMS, Taleo');
             continue;
         }
 
         const { platform, slug } = detected;
-        log.info(`✅ Detected platform: ${platform.toUpperCase()} | Company slug: ${slug}`);
+        log.info(`Platform detected: ${platform.toUpperCase()} | Company slug: ${slug}`);
 
         let jobs = [];
         try {
@@ -319,21 +327,24 @@ async function main() {
                     log.error(`Platform "${platform}" is detected but not yet implemented.`);
             }
         } catch (err) {
-            log.error(`Scraping failed for ${platform} (${slug}): ${err.message}\n${err.stack}`);
+            log.error(`Scraping failed for ${platform} (${slug}): ${err.message}`);
         }
 
-        allJobs.push(...jobs);
+        if (jobs.length) {
+            const remaining = Math.max(0, resultsWanted - totalSaved);
+            const batch = dedupeJobs(jobs).slice(0, remaining);
+            if (batch.length) {
+                await Dataset.pushData(batch);
+                totalSaved += batch.length;
+                log.info(`Saved ${batch.length} jobs from ${platform}. Total: ${totalSaved}/${resultsWanted}`);
+            }
+        }
     }
 
-    // ── Save results ─────────────────────────────────────────────────────────
-    const finalJobs = dedupeJobs(allJobs).slice(0, resultsWanted);
-
-    if (!finalJobs.length) {
-        log.warning('No jobs were extracted after normalization. The company may have no open positions, or the URL may be incorrect.');
-    } else {
-        await Dataset.pushData(finalJobs);
-        log.info(`✅ Saved ${finalJobs.length} jobs from ${uniqueUrls.length} input URL(s)`);
+    if (!totalSaved) {
+        log.warning('No jobs were extracted after normalization.');
     }
+    log.info(`Done | saved=${totalSaved} | urls=${urlIndex}`);
 }
 
 await main().catch(async (err) => {

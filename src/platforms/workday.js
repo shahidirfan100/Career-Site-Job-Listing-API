@@ -1,15 +1,13 @@
-import { setTimeout as sleep } from 'node:timers/promises';
-
 import { log } from 'apify';
 import { load as cheerioLoad } from 'cheerio';
-import { gotScraping } from 'got-scraping';
+
+import { fetchJson } from '../utils/http.js';
 
 const DEFAULT_PAGE_LIMIT = 20;
 const MAX_PAGES_CAP = 500;
 const LIST_REQUEST_RETRIES = 4;
 const DETAIL_REQUEST_RETRIES = 3;
 const DETAIL_CONCURRENCY = 6;
-const RETRY_DELAY_MS = 500;
 const MS_IN_DAY = 24 * 60 * 60 * 1000;
 
 const LOCATION_ALIASES = {
@@ -21,24 +19,6 @@ const LOCATION_ALIASES = {
 const dedupeStrings = (values) => [...new Set(
     (values || []).filter((v) => typeof v === 'string').map((v) => v.trim()).filter(Boolean),
 )];
-
-const buildBrowserHeaders = ({ origin, referer }) => ({
-    accept: 'application/json, text/plain, */*',
-    'accept-language': 'en-US,en;q=0.9',
-    'cache-control': 'no-cache',
-    pragma: 'no-cache',
-    'content-type': 'application/json;charset=UTF-8',
-    origin,
-    referer,
-    'sec-ch-ua': '"Google Chrome";v="130", "Chromium";v="130", "Not=A?Brand";v="24"',
-    'sec-ch-ua-mobile': '?0',
-    'sec-ch-ua-platform': '"Windows"',
-    'sec-fetch-dest': 'empty',
-    'sec-fetch-mode': 'cors',
-    'sec-fetch-site': 'same-origin',
-    'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.6723.58 Safari/537.36',
-    'x-requested-with': 'XMLHttpRequest',
-});
 
 const cleanText = (html) => {
     if (!html) return '';
@@ -223,47 +203,6 @@ const pruneEmpty = (value) => {
     return value;
 };
 
-const parseJsonStrict = (rawBody) => {
-    if (!rawBody) throw new Error('Empty response body');
-    if (typeof rawBody === 'object' && !Buffer.isBuffer(rawBody)) return rawBody;
-    const text = Buffer.isBuffer(rawBody) ? rawBody.toString('utf8') : String(rawBody);
-    const trimmed = text.trim();
-    if (!trimmed) throw new Error('Empty response body text');
-    return JSON.parse(trimmed);
-};
-
-const requestJsonWithRetries = async ({ url, method = 'GET', headers, body, proxyConfiguration, retries, requestLabel }) => {
-    let lastError = null;
-    for (let attempt = 1; attempt <= retries; attempt++) {
-        let proxyUrl;
-        if (proxyConfiguration?.newUrl) proxyUrl = await proxyConfiguration.newUrl();
-        try {
-            const response = await gotScraping({
-                url, method, headers, body, proxyUrl,
-                responseType: 'text',
-                throwHttpErrors: false,
-                timeout: { request: 25000 },
-            });
-            const statusCode = response.statusCode ?? 0;
-            const contentType = String(response.headers?.['content-type'] || '').toLowerCase();
-            let rawText = '';
-            if (typeof response.body === 'string') rawText = response.body;
-            else if (Buffer.isBuffer(response.body)) rawText = response.body.toString('utf8');
-            else rawText = String(response.body ?? '');
-            if (statusCode >= 500 || statusCode === 429) throw new Error(`${requestLabel} HTTP ${statusCode}`);
-            try { return parseJsonStrict(rawText); } catch {
-                const snippet = rawText.slice(0, 80).replace(/\s+/g, ' ');
-                const extra = snippet.startsWith('<') ? ' (markup response)' : '';
-                throw new Error(`${requestLabel} invalid JSON${extra}: status=${statusCode}, content-type=${contentType || 'unknown'}, snippet="${snippet}"`);
-            }
-        } catch (error) {
-            lastError = error;
-            if (attempt < retries) { log.warning(`${requestLabel} attempt ${attempt}/${retries} failed: ${error.message}`); await sleep(RETRY_DELAY_MS); }
-        }
-    }
-    throw lastError || new Error(`${requestLabel} failed`);
-};
-
 const deriveJobUrls = ({ requestUrl, meta, job }) => {
     const {origin} = new URL(requestUrl);
     const externalPath = job.externalPath || job.externalUrl;
@@ -313,7 +252,6 @@ export async function scrape({ slug: _slug, board: _board, rawUrl }, { resultsWa
     let config;
     try {
         config = deriveConfigFromUrl(rawUrl);
-        config.headers = buildBrowserHeaders({ origin: config.origin, referer: config.referer });
         config.keyword = normalizedKeyword;
     } catch (err) {
         log.error(`[Workday] Could not derive API config from URL: ${err.message}`);
@@ -329,6 +267,14 @@ export async function scrape({ slug: _slug, board: _board, rawUrl }, { resultsWa
     const allRecords = [];
     const safeMaxPages = Math.min(maxPages, MAX_PAGES_CAP);
 
+    const makeOpts = async (overrides = {}) => ({
+        proxyUrl: proxyConfiguration ? await proxyConfiguration.newUrl() : undefined,
+        origin: config.origin,
+        referer: config.referer,
+        mobile: false,
+        ...overrides,
+    });
+
     while (saved < resultsWanted && page < safeMaxPages && (total === null || offset < total)) {
         const payload = buildSearchPayload({ keyword: normalizedKeyword, offset, limit });
         let listData = null;
@@ -337,15 +283,8 @@ export async function scrape({ slug: _slug, board: _board, rawUrl }, { resultsWa
 
         for (const listUrl of listUrlCandidates) {
             try {
-                const data = await requestJsonWithRetries({
-                    url: listUrl,
-                    method: 'POST',
-                    headers: config.headers,
-                    body: JSON.stringify(payload),
-                    proxyConfiguration,
-                    retries: LIST_REQUEST_RETRIES,
-                    requestLabel: `[Workday] List offset=${offset}`,
-                });
+                const baseOpts = await makeOpts({ method: 'POST', body: payload, retries: LIST_REQUEST_RETRIES });
+                const data = await fetchJson(listUrl, baseOpts);
                 if (data && Array.isArray(data.jobPostings)) {
                     listData = data;
                     if (listUrl !== config.jobsUrl) {
@@ -402,13 +341,7 @@ export async function scrape({ slug: _slug, board: _board, rawUrl }, { resultsWa
                 let detailPayload = null;
                 if (jobApiUrl) {
                     try {
-                        detailPayload = await requestJsonWithRetries({
-                            url: jobApiUrl, method: 'GET',
-                            headers: { ...config.headers, referer: config.referer },
-                            proxyConfiguration,
-                            retries: DETAIL_REQUEST_RETRIES,
-                            requestLabel: `[Workday] Detail ${jobApiUrl}`,
-                        });
+                        detailPayload = await fetchJson(jobApiUrl, await makeOpts({ retries: DETAIL_REQUEST_RETRIES }));
                     } catch (err) { log.warning(`[Workday] Detail failed for ${jobApiUrl}: ${err.message}`); }
                 }
 

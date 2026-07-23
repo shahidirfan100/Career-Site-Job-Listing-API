@@ -21,7 +21,8 @@ export async function scrape({ slug }, { resultsWanted, proxyUrl } = {}) {
     try {
         data = await fetchJson(url, {
             proxyUrl,
-            headers: { 'Accept': 'application/json' },
+            origin: `https://${slug}.bamboohr.com`,
+            referer: `https://${slug}.bamboohr.com/careers`,
         });
     } catch (err) {
         log.error(`[BambooHR] API failed for ${slug}: ${err.message}`);

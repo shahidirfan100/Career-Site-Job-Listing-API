@@ -13,7 +13,7 @@ export async function scrape({ slug }, { resultsWanted, proxyUrl } = {}) {
 
     let data;
     try {
-        data = await fetchJson(url, { proxyUrl });
+        data = await fetchJson(url, { proxyUrl, origin: 'https://boards-api.greenhouse.io', referer: `https://boards.greenhouse.io/${slug}` });
     } catch (err) {
         log.error(`[Greenhouse] API request failed for ${slug}: ${err.message}`);
         return [];

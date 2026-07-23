@@ -15,7 +15,7 @@ export async function scrape({ slug, isEU = false }, { resultsWanted, proxyUrl }
 
     let postings;
     try {
-        postings = await fetchJson(url, { proxyUrl });
+        postings = await fetchJson(url, { proxyUrl, origin: 'https://jobs.lever.co', referer: `https://jobs.lever.co/${slug}` });
     } catch (err) {
         log.error(`[Lever] API request failed for ${slug}: ${err.message}`);
         return [];

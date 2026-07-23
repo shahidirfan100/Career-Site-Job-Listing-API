@@ -1,8 +1,7 @@
 import { log } from 'apify';
 import { load as cheerioLoad } from 'cheerio';
-import { gotScraping } from 'got-scraping';
 
-import { cleanObj, fetchJson, parseDate } from '../utils/http.js';
+import { cleanObj, fetchJson, fetchXml, parseDate } from '../utils/http.js';
 
 const stripHtml = (value) => {
     if (!value || typeof value !== 'string') return null;
@@ -94,13 +93,7 @@ export async function scrape({ slug, rawUrl }, { resultsWanted, proxyUrl } = {})
     const xmlUrl = `https://${host}/xml?language=en`;
     try {
         log.info(`[Personio] Trying XML Feed: ${xmlUrl}`);
-        const response = await gotScraping({
-            url: xmlUrl,
-            proxyUrl,
-            method: 'GET',
-            responseType: 'text',
-            timeout: { request: 20_000 },
-        });
+        const response = await fetchXml(xmlUrl, { proxyUrl, origin: `https://${host}`, referer: `https://${host}/`, retries: 2, timeout: 20_000 });
 
         if (response.statusCode === 200 && response.body) {
             const xmlText = String(response.body);
@@ -119,13 +112,13 @@ export async function scrape({ slug, rawUrl }, { resultsWanted, proxyUrl } = {})
     let data;
     try {
         log.info(`[Personio] Trying JSON API: ${jsonUrl}`);
-        data = await fetchJson(jsonUrl, { proxyUrl });
+        data = await fetchJson(jsonUrl, { proxyUrl, origin: `https://${host}`, referer: `https://${host}/` });
     } catch {
         // Fallback domain for JSON API
         const fallbackJsonUrl = `https://${slug}.jobs.personio.de/api/v1/jobs?language=en`;
         try {
             log.info(`[Personio] Trying Fallback JSON API: ${fallbackJsonUrl}`);
-            data = await fetchJson(fallbackJsonUrl, { proxyUrl });
+            data = await fetchJson(fallbackJsonUrl, { proxyUrl, origin: `https://${slug}.jobs.personio.de`, referer: `https://${slug}.jobs.personio.de/` });
         } catch (err2) {
             log.error(`[Personio] Both XML and JSON API failed for ${slug}: ${err2.message}`);
             return [];

@@ -1,8 +1,7 @@
 import { log } from 'apify';
 import { load as cheerioLoad } from 'cheerio';
-import { gotScraping } from 'got-scraping';
 
-import { cleanObj, fetchJson, parseDate } from '../utils/http.js';
+import { cleanObj, fetchHtml, fetchJson, parseDate } from '../utils/http.js';
 
 const stripHtml = (value) => {
     if (!value || typeof value !== 'string') return null;
@@ -69,13 +68,7 @@ export async function scrape({ slug }, { resultsWanted, proxyUrl, allowHtmlDetai
     for (const job of jobsOut) {
         if (job.description || !job.url) continue;
         try {
-            const response = await gotScraping({
-                url: job.url,
-                proxyUrl,
-                responseType: 'text',
-                throwHttpErrors: false,
-                timeout: { request: 30_000 },
-            });
+            const response = await fetchHtml(job.url, { proxyUrl, origin: `https://${slug}.breezy.hr`, referer: `https://${slug}.breezy.hr/` });
             if ((response.statusCode || 0) >= 400) continue;
             const extracted = extractDescriptionFromHtml(String(response.body || ''));
             if (extracted) job.description = extracted;

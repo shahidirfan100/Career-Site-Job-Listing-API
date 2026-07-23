@@ -179,9 +179,16 @@ export function detectPlatform(rawUrl) {
         const slug = host.replace('.teamtailor.com', '');
         if (slug) return { platform: 'teamtailor', slug, rawUrl };
     }
-    if (host.startsWith('careers.') && parts.length === 0) {
-        const slug = host.split('.')[1];
+    if (host.endsWith('.teamtailor.net')) {
+        const slug = host.replace('.teamtailor.net', '');
         if (slug) return { platform: 'teamtailor', slug, rawUrl };
+    }
+    // careers.{slug}.com — only match when subdomain has typical TeamTailor names
+    if (host.startsWith('careers.') && parts.length >= 1 && /^careers\.(?!google|amazon|microsoft|apple|meta|facebook|linkedin|indeed|glassdoor|monster|simplyhired|ziprecruiter)/i.test(host)) {
+        const slug = host.split('.')[1];
+        if (slug && parts[0].match(/^(jobs?|careers?|positions?|vacancies?)$/i)) {
+            return { platform: 'teamtailor', slug, rawUrl };
+        }
     }
 
     // ── Personio ─────────────────────────────────────────────────────────────
@@ -217,11 +224,12 @@ export function detectPlatform(rawUrl) {
     }
 
     // ── Taleo ────────────────────────────────────────────────────────────────
-    if (host.endsWith('.taleo.net') && parts[0] === 'careersection') {
+    if ((host.endsWith('.taleo.net') || host.endsWith('.brassring.com')) && parts[0] === 'careersection') {
         const section = parts[1] || null;
+        const tld = host.endsWith('.taleo.net') ? '.taleo.net' : '.brassring.com';
         return {
             platform: 'taleo',
-            slug: host.replace('.taleo.net', ''),
+            slug: host.replace(tld, ''),
             section,
             rawUrl,
         };

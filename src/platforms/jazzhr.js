@@ -1,8 +1,7 @@
 import { log } from 'apify';
 import { load as cheerioLoad } from 'cheerio';
-import { gotScraping } from 'got-scraping';
 
-import { cleanObj, fetchJson, parseDate } from '../utils/http.js';
+import { cleanObj, fetchHtml, fetchJson, parseDate } from '../utils/http.js';
 
 const stripHtml = (value) => {
     if (!value || typeof value !== 'string') return null;
@@ -39,16 +38,7 @@ const parseLdJson = (html) => {
 
 const extractFromApplyPage = async ({ slug, baseUrl, proxyUrl, resultsWanted }) => {
     const listingUrl = `${baseUrl}/apply`;
-    const response = await gotScraping({
-        url: listingUrl,
-        proxyUrl,
-        responseType: 'text',
-        throwHttpErrors: false,
-        timeout: { request: 30_000 },
-        headers: {
-            Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-        },
-    });
+    const response = await fetchHtml(listingUrl, { proxyUrl, origin: baseUrl, referer: `${baseUrl}/`, retries: 2 });
 
     if ((response.statusCode || 0) >= 400) {
         throw new Error(`Apply page returned HTTP ${response.statusCode}`);
@@ -74,13 +64,7 @@ const extractFromApplyPage = async ({ slug, baseUrl, proxyUrl, resultsWanted }) 
 
     for (const job of jobs) {
         try {
-            const detail = await gotScraping({
-                url: job.url,
-                proxyUrl,
-                responseType: 'text',
-                throwHttpErrors: false,
-                timeout: { request: 30_000 },
-            });
+            const detail = await fetchHtml(job.url, { proxyUrl, origin: baseUrl, referer: listingUrl, retries: 2 });
             if ((detail.statusCode || 0) >= 400) continue;
 
             const detailHtml = String(detail.body || '');
@@ -141,7 +125,7 @@ export async function scrape({ slug }, { resultsWanted, proxyUrl } = {}) {
 
     let data;
     try {
-        data = await fetchJson(url, { proxyUrl });
+        data = await fetchJson(url, { proxyUrl, origin: baseUrl, referer: `${baseUrl}/` });
     } catch (err) {
         log.warning(`[JazzHR] API endpoint failed for ${slug}: ${err.message}. Falling back to apply board parsing.`);
         try {

@@ -39,13 +39,15 @@ export async function scrape({ slug }, { resultsWanted, proxyUrl } = {}) {
 
     log.info(`[SmartRecruiters] Fetching jobs for company: ${slug}`);
 
+    const sharedOpts = { proxyUrl, origin: 'https://api.smartrecruiters.com', referer: `https://careers.smartrecruiters.com/${slug}/` };
+
     while (allJobs.length < (resultsWanted || Infinity) && offset < totalFound) {
         const limit = Math.min(PAGE_SIZE, resultsWanted ? resultsWanted - allJobs.length : PAGE_SIZE);
         const url = `https://api.smartrecruiters.com/v1/companies/${slug}/postings?limit=${limit}&offset=${offset}`;
 
         let data;
         try {
-            data = await fetchJson(url, { proxyUrl });
+            data = await fetchJson(url, sharedOpts);
         } catch (err) {
             log.error(`[SmartRecruiters] API failed at offset ${offset} for ${slug}: ${err.message}`);
             break;
@@ -56,15 +58,28 @@ export async function scrape({ slug }, { resultsWanted, proxyUrl } = {}) {
 
         if (!jobs.length) break;
 
-        for (const j of jobs) {
-            let detail = null;
-            if (j.id) {
-                try {
-                    detail = await fetchJson(`https://api.smartrecruiters.com/v1/companies/${slug}/postings/${j.id}`, { proxyUrl });
-                } catch (err) {
-                    log.debug(`[SmartRecruiters] Detail request failed for posting ${j.id}: ${err.message}`);
+        // Fetch details concurrently
+        const postingIds = jobs.filter((j) => j.id).map((j) => j.id);
+        const detailMap = {};
+        if (postingIds.length) {
+            const detailResults = await Promise.allSettled(
+                postingIds.map((id) =>
+                    fetchJson(`https://api.smartrecruiters.com/v1/companies/${slug}/postings/${id}`, sharedOpts)
+                        .catch((err) => {
+                            log.debug(`[SmartRecruiters] Detail failed for posting ${id}: ${err.message}`);
+                            return null;
+                        }),
+                ),
+            );
+            detailResults.forEach((result, idx) => {
+                if (result.status === 'fulfilled' && result.value) {
+                    detailMap[postingIds[idx]] = result.value;
                 }
-            }
+            });
+        }
+
+        for (const j of jobs) {
+            const detail = detailMap[j.id] || null;
 
             allJobs.push(cleanObj({
                 job_id: j.id || null,

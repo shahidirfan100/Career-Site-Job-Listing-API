@@ -1,16 +1,7 @@
 import { log } from 'apify';
 import { load as cheerioLoad } from 'cheerio';
-import { gotScraping } from 'got-scraping';
 
-const XML_HEADERS = {
-    Accept: 'application/rss+xml, application/xml, text/xml;q=0.9, */*;q=0.8',
-};
-
-const toIsoDate = (value) => {
-    if (!value) return undefined;
-    const t = Date.parse(value);
-    return Number.isNaN(t) ? undefined : new Date(t).toISOString().slice(0, 10);
-};
+import { fetchHtml, fetchXml, parseDate as toIsoDate } from '../utils/http.js';
 
 const parseRssJobs = (rssXml, slug) => {
     const $ = cheerioLoad(rssXml || '', { xmlMode: true });
@@ -108,13 +99,7 @@ const extractDetailFromHtml = (html) => {
 
 const scrapeFromSearchPageFallback = async ({ host, section, slug, rawUrl, proxyUrl, resultsWanted }) => {
     const searchUrl = rawUrl || `https://${host}/careersection/${section || '2'}/jobsearch.ftl?lang=en`;
-    const searchResp = await gotScraping({
-        url: searchUrl,
-        proxyUrl,
-        responseType: 'text',
-        throwHttpErrors: false,
-        timeout: { request: 30_000 },
-    });
+    const searchResp = await fetchHtml(searchUrl, { proxyUrl, origin: `https://${host}`, referer: `https://${host}/`, retries: 2 });
     if ((searchResp.statusCode || 0) >= 400) return [];
 
     const searchHtml = String(searchResp.body || '');
@@ -125,13 +110,7 @@ const scrapeFromSearchPageFallback = async ({ host, section, slug, rawUrl, proxy
         const detailUrl = `https://${host}/careersection/${section || '2'}/jobdetail.ftl?job=${item.jobNumber}&lang=en`;
         let detail = {};
         try {
-            const detailResp = await gotScraping({
-                url: detailUrl,
-                proxyUrl,
-                responseType: 'text',
-                throwHttpErrors: false,
-                timeout: { request: 30_000 },
-            });
+            const detailResp = await fetchHtml(detailUrl, { proxyUrl, origin: `https://${host}`, referer: searchUrl, retries: 2 });
             if ((detailResp.statusCode || 0) < 400) {
                 detail = extractDetailFromHtml(String(detailResp.body || ''));
             }
@@ -169,14 +148,7 @@ export async function scrape({ rawUrl, slug, section }, { resultsWanted = 20, pr
     let jobs = [];
     for (const feedUrl of feedCandidates) {
         try {
-            const response = await gotScraping({
-                url: feedUrl,
-                proxyUrl,
-                headers: XML_HEADERS,
-                responseType: 'text',
-                throwHttpErrors: false,
-                timeout: { request: 30_000 },
-            });
+            const response = await fetchXml(feedUrl, { proxyUrl, origin: `https://${parsed.host}`, referer: `https://${parsed.host}/`, retries: 2 });
             if ((response.statusCode || 0) >= 400) continue;
 
             const rss = String(response.body || '');
@@ -214,13 +186,7 @@ export async function scrape({ rawUrl, slug, section }, { resultsWanted = 20, pr
         for (const job of limitedJobs) {
             if (job.description || !job.url) continue;
             try {
-                const response = await gotScraping({
-                    url: job.url,
-                    proxyUrl,
-                    responseType: 'text',
-                    throwHttpErrors: false,
-                    timeout: { request: 30_000 },
-                });
+                const response = await fetchHtml(job.url, { proxyUrl, origin: `https://${parsed.host}`, referer: `https://${parsed.host}/`, retries: 2 });
                 if ((response.statusCode || 0) >= 400) continue;
                 const description = extractDescriptionFromHtml(String(response.body || ''));
                 if (description) job.description = description;

@@ -1,18 +1,7 @@
 import { log } from 'apify';
 import { load as cheerioLoad } from 'cheerio';
-import { gotScraping } from 'got-scraping';
 
-const XML_HEADERS = {
-    Accept: 'application/xml, text/xml;q=0.9, */*;q=0.8',
-    'Accept-Language': 'en-US,en;q=0.9',
-    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36',
-};
-
-const toIsoDate = (value) => {
-    if (!value) return undefined;
-    const t = Date.parse(value);
-    return Number.isNaN(t) ? undefined : new Date(t).toISOString().slice(0, 10);
-};
+import { fetchHtml, fetchXml, parseDate as toIsoDate } from '../utils/http.js';
 
 const extractJobId = (url) => {
     if (!url || typeof url !== 'string') return undefined;
@@ -80,15 +69,7 @@ export async function scrape({ rawUrl, slug }, { resultsWanted = 20, proxyUrl, a
         ];
         for (const sitemapUrl of candidateSitemaps) {
             try {
-                const response = await gotScraping({
-                    url: sitemapUrl,
-                    proxyUrl,
-                    headers: XML_HEADERS,
-                    method: 'GET',
-                    responseType: 'text',
-                    throwHttpErrors: false,
-                    timeout: { request: 30_000 },
-                });
+                const response = await fetchXml(sitemapUrl, { proxyUrl, origin, referer: `${origin}/`, retries: 2 });
                 if ((response.statusCode || 0) >= 400) {
                     log.warning(`[iCIMS] Sitemap endpoint returned HTTP ${response.statusCode}: ${sitemapUrl}`);
                     continue;
@@ -144,13 +125,7 @@ export async function scrape({ rawUrl, slug }, { resultsWanted = 20, proxyUrl, a
         for (const job of jobs) {
             if (!job.url) continue;
             try {
-                const response = await gotScraping({
-                    url: job.url,
-                    proxyUrl,
-                    responseType: 'text',
-                    throwHttpErrors: false,
-                    timeout: { request: 30_000 },
-                });
+                const response = await fetchHtml(job.url, { proxyUrl, origin: selectedOrigin, referer: `${selectedOrigin}/`, retries: 2 });
                 if ((response.statusCode || 0) >= 400) continue;
                 const description = extractDescriptionFromHtml(String(response.body || ''));
                 if (description) job.description = description;

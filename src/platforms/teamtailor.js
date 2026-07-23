@@ -32,10 +32,8 @@ export async function scrape({ slug, rawUrl }, { resultsWanted, proxyUrl } = {})
         try {
             const data = await fetchJson(url, {
                 proxyUrl,
-                headers: {
-                    'Accept': 'application/json',
-                    'Referer': base,
-                },
+                origin: base,
+                referer: `${base}/`,
             });
             // Response may be:
             // - array
