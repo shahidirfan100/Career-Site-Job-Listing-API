@@ -13,7 +13,7 @@ const stripHtml = (value) => {
  * Endpoint: https://{slug}.teamtailor.com/jobs.json  (or /api/jobs.json)
  * Falls back to the paginated REST API format used by some sites.
  */
-export async function scrape({ slug, rawUrl }, { resultsWanted, proxyUrl } = {}) {
+export async function scrape({ slug, rawUrl, prefetchedData }, { resultsWanted, proxyUrl } = {}) {
     const base = rawUrl
         ? new URL(rawUrl).origin
         : `https://${slug}.teamtailor.com`;
@@ -27,27 +27,26 @@ export async function scrape({ slug, rawUrl }, { resultsWanted, proxyUrl } = {})
         `${base}/en/jobs.json`,
     ];
 
-    let jobs = null;
-    for (const url of endpoints) {
-        try {
-            const data = await fetchJson(url, {
-                proxyUrl,
-                origin: base,
-                referer: `${base}/`,
-            });
-            // Response may be:
-            // - array
-            // - { jobs: [...] }
-            // - { data: [...] }
-            // - JSON Feed format { items: [...] }
-            const arr = Array.isArray(data) ? data : (data?.jobs ?? data?.data ?? data?.items ?? null);
-            if (Array.isArray(arr) && arr.length >= 0) {
-                jobs = arr;
-                log.info(`[TeamTailor] Found ${jobs.length} jobs via ${url}`);
-                break;
+    let jobs = Array.isArray(prefetchedData)
+        ? prefetchedData
+        : (prefetchedData?.jobs ?? prefetchedData?.data ?? prefetchedData?.items ?? null);
+    if (jobs === null) {
+        for (const url of endpoints) {
+            try {
+                const data = await fetchJson(url, {
+                    proxyUrl,
+                    origin: base,
+                    referer: `${base}/`,
+                });
+                const arr = Array.isArray(data) ? data : (data?.jobs ?? data?.data ?? data?.items ?? null);
+                if (Array.isArray(arr) && arr.length >= 0) {
+                    jobs = arr;
+                    log.info(`[TeamTailor] Found ${jobs.length} jobs via ${url}`);
+                    break;
+                }
+            } catch (err) {
+                log.debug(`[TeamTailor] ${url} failed: ${err.message}`);
             }
-        } catch (err) {
-            log.debug(`[TeamTailor] ${url} failed: ${err.message}`);
         }
     }
 

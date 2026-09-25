@@ -1,6 +1,6 @@
 ## What does Career Site Job Listing API do?
 
-Career Site Job Listing API is a multi-platform career site job scraper for collecting public job listings from employer career boards powered by major applicant tracking systems. Add one or more career board URLs in `startUrls`, and the Actor detects the supported platform and returns clean job records with titles, companies, locations, descriptions, dates, application links, and source metadata.
+Career Site Job Listing API collects public job listings from 18 supported applicant tracking systems. Add ATS board URLs or employer careers pages in `startUrls`; the Actor checks the URL, fetched page markup, embedded API paths, and distinctive job-data schemas to identify a supported platform, then returns normalized records.
 
 Use it to build recruiting datasets, monitor competitor hiring, research labor markets, create job alerts, or feed structured job data into another application. Results are saved to an Apify dataset and can be downloaded or connected to downstream workflows.
 
@@ -8,8 +8,9 @@ Use it to build recruiting datasets, monitor competitor hiring, research labor m
 
 - **One input format for many platforms** - Collect jobs from multiple ATS providers in the same run.
 - **Company-specific hiring data** - Start with the public career board URL for the employer you want to monitor.
+- **Employer-page discovery** - Supply a company careers page when ATS details appear in links, page scripts, API paths, or recognizable embedded job data.
 - **Useful normalized records** - Compare job titles, locations, departments, employment types, dates, and links across different sources.
-- **Flexible collection limits** - Control the maximum number of jobs and the page safety cap for each run.
+- **Flexible collection size** - Set the number of records and pages to collect without a fixed Actor ceiling.
 - **Duplicate-safe datasets** - Repeated records are removed before they are saved.
 - **Automation-ready output** - Use Apify schedules, webhooks, API access, and dataset exports for recurring workflows.
 
@@ -56,32 +57,39 @@ Some Workday listings can also include fields such as `job_family` and `salary` 
 
 | Parameter | Type | Required | Default | Description |
 |---|---|---|---|---|
-| `startUrls` | Array<String> | No | `["https://jobs.lever.co/spotify"]` | One or more public career board URLs from supported ATS platforms. |
-| `results_wanted` | Integer | No | `20` | Maximum number of job records to save across the run. |
-| `max_pages` | Integer | No | `5` | Safety cap on the number of API pages to fetch. |
-| `allow_html_detail_fallback` | Boolean | No | `false` | Fetches public detail pages only for BreezyHR, iCIMS, and Taleo when listing data may lack descriptions. |
+| `startUrls` | Array<String> | Yes | — | One or more public ATS board URLs or employer career pages. The Actor inspects fetched markup and data for supported ATS signals. |
+| `results_wanted` | Integer | No | `20` | Maximum number of job records to save across the run; no fixed upper limit is imposed by the Actor. |
+| `max_pages` | Integer | No | `5` | Maximum number of API pages to fetch per paginated board; no fixed upper limit is imposed by the Actor. |
 | `proxyConfiguration` | Object | No | `{ "useApifyProxy": false }` | Optional Apify Proxy settings. |
 
-Although the schema does not mark fields as required, provide at least one URL in `startUrls` because the Actor cannot collect jobs without a supported career board URL.
+Provide at least one URL in `startUrls`. The Actor returns listings from the supplied boards without keyword, location, or posting-date filters. It does not include a global company-and-board index for searching across every ATS. A custom-domain careers page can still be detected when its fetched markup or embedded data contains a supported platform fingerprint. Generic job data without a distinctive ATS signal is not enough to identify a provider reliably.
 
 ## Supported Job Boards
 
-| Platform | Typical URL format | Example |
+The examples below were checked against the platform adapters. A board can return fewer records later if the employer closes positions or changes its public feed.
+
+| Platform | Typical URL format | Example board |
 |---|---|---|
-| Lever | `https://jobs.lever.co/{company}` | `https://jobs.lever.co/spotify` |
+| Ashby | `https://jobs.ashbyhq.com/{company}` | `https://jobs.ashbyhq.com/seamflow` |
+| BambooHR | `https://{company}.bamboohr.com/careers/` | `https://flyio.bamboohr.com/careers` |
+| BreezyHR | `https://{company}.breezy.hr/` | `https://renewco2.breezy.hr/` |
 | Greenhouse | `https://job-boards.greenhouse.io/{company}` | `https://job-boards.greenhouse.io/airbnb` |
-| Ashby | `https://jobs.ashbyhq.com/{company}` | `https://jobs.ashbyhq.com/vercel` |
-| SmartRecruiters | `https://careers.smartrecruiters.com/{company}` | `https://careers.smartrecruiters.com/Visa` |
-| Workable | `https://apply.workable.com/{company}/` | `https://apply.workable.com/evidence-action/` |
-| Recruitee | `https://{company}.recruitee.com/` | `https://recruitee.recruitee.com/` |
-| BreezyHR | `https://{company}.breezy.hr/` | `https://breezy-hr.breezy.hr/` |
-| BambooHR | `https://{company}.bamboohr.com/careers/` | `https://bamboohr.bamboohr.com/careers/` |
-| Workday | `https://{company}.wdN.myworkdayjobs.com/{board}` | `https://sony.wd1.myworkdayjobs.com/SonyCareers` |
-| TeamTailor | `https://{company}.teamtailor.com/` or `https://careers.{company}.com/` | `https://careers.kognity.com/` |
-| Personio | `https://{company}.jobs.personio.de/` | `https://company.jobs.personio.de/` |
-| JazzHR | `https://{company}.jazz.co/` | `https://example.jazz.co/` |
-| iCIMS | `https://careers-{company}.icims.com/` | `https://careers-example.icims.com/jobs/search` |
-| Taleo | `https://{company}.taleo.net/careersection/{section}/jobsearch.ftl` | `https://nato.taleo.net/careersection/2/jobsearch.ftl?lang=en` |
+| iCIMS | `https://careers-{company}.icims.com/jobs/search` | `https://careers-rambus.icims.com/jobs/search?ss=1` |
+| JazzHR | `https://{company}.jazz.co/` or a public JazzHR feed URL | `https://app.jazz.co/feeds/export/jobs/Riverdale` |
+| Jobvite | `https://jobs.jobvite.com/{company}` | `https://jobs.jobvite.com/enverus/jobs` |
+| Lever | `https://jobs.lever.co/{company}` | `https://jobs.lever.co/spotify` |
+| Manatal | `https://www.careers-page.com/{company}` | `https://www.careers-page.com/manatal` |
+| Personio | `https://{company}.jobs.personio.de/` or `.jobs.personio.com/` | `https://detax-gmbh-1.jobs.personio.de/` |
+| Pinpoint | `https://{company}.pinpointhq.com/` | `https://workwithus.pinpointhq.com/` |
+| Recruitee | `https://{company}.recruitee.com/` | `https://helloprint.recruitee.com/` |
+| Rippling | `https://ats.rippling.com/{company}/jobs` | `https://ats.rippling.com/legitscript-careers/jobs` |
+| SmartRecruiters | `https://careers.smartrecruiters.com/{company}` | `https://careers.smartrecruiters.com/Leger2` |
+| Taleo | `https://{company}.taleo.net/careersection/{section}/jobsearch.ftl` | `https://drhorton.taleo.net/careersection/2/jobsearch.ftl?lang=en` |
+| TeamTailor | `https://{company}.teamtailor.com/` | `https://flower.teamtailor.com/` |
+| Workable | `https://apply.workable.com/{company}/` | `https://apply.workable.com/hi-jobs/` |
+| Workday | `https://{company}.wdN.myworkdayjobs.com/{board}` | `https://workday.wd5.myworkdayjobs.com/en-US/Workday` |
+
+**Taleo data:** The adapter uses the public JSON job-search endpoint exposed by the supplied career section and paginates up to `max_pages`. Career sections choose their own visible columns; the Actor maps a field only when its heading can be matched safely, so department or employment type may be empty for boards that do not publish those columns. A limited RSS fallback is available for sections whose JSON endpoint cannot be read, but Oracle documents that RSS is optional, off by default, and limited to 10 jobs per feed ([Oracle documentation](https://docs.oracle.com/en/cloud/saas/taleo-enterprise/22b/otcug/c-rssfeature.html)).
 
 ## Find Company Boards with Google
 
@@ -90,7 +98,7 @@ If you want to find company career boards for a specific platform, search Google
 | Platform | Google search command |
 |---|---|
 | Lever | `site:jobs.lever.co "Job Title"` |
-| Greenhouse | `site:boards.greenhouse.io "Job Title"` |
+| Greenhouse | `site:job-boards.greenhouse.io "Job Title"` |
 | Workday | `site:myworkdayjobs.com "Job Title"` |
 | Ashby | `site:jobs.ashbyhq.com "Job Title"` |
 | SmartRecruiters | `site:smartrecruiters.com "Job Title"` |
@@ -103,8 +111,12 @@ If you want to find company career boards for a specific platform, search Google
 | JazzHR | `site:jazz.co "Job Title"` |
 | iCIMS | `site:icims.com/jobs/search "Job Title"` |
 | Taleo | `site:taleo.net/careersection "Job Title"` |
+| Jobvite | `site:jobs.jobvite.com "Job Title"` |
+| Pinpoint | `site:pinpointhq.com "Job Title"` |
+| Rippling | `site:ats.rippling.com "Job Title"` |
+| Manatal | `site:careers-page.com "Job Title"` |
 
-After finding a public board, copy its canonical URL into `startUrls`. Use the supported URL patterns above to confirm that the board belongs to a platform recognized by the Actor.
+After finding a public board, copy its URL into `startUrls`. The Actor also checks supported ATS links, embedded endpoints, vendor markers, and distinctive job-data schemas on the supplied employer careers page.
 
 ## Usage Examples
 
@@ -130,7 +142,7 @@ Collect from several supported ATS platforms in one run and allow more paginatio
   "startUrls": [
     "https://jobs.lever.co/spotify",
     "https://job-boards.greenhouse.io/airbnb",
-    "https://careers-example.icims.com/jobs/search"
+    "https://careers-rambus.icims.com/jobs/search?ss=1"
   ],
   "results_wanted": 60,
   "max_pages": 8
@@ -144,27 +156,10 @@ Increase the result limit and page safety cap for a broader collection:
 ```json
 {
   "startUrls": [
-    "https://sony.wd1.myworkdayjobs.com/SonyCareers"
+    "https://workday.wd5.myworkdayjobs.com/en-US/Workday"
   ],
   "results_wanted": 100,
   "max_pages": 10
-}
-```
-
-### Detail fallback for selected platforms
-
-Request public detail-page enrichment when BreezyHR, iCIMS, or Taleo listing data does not include a description:
-
-```json
-{
-  "startUrls": [
-    "https://careers-example.icims.com/jobs/search"
-  ],
-  "results_wanted": 30,
-  "allow_html_detail_fallback": true,
-  "proxyConfiguration": {
-    "useApifyProxy": false
-  }
 }
 ```
 
@@ -199,7 +194,7 @@ Request public detail-page enrichment when BreezyHR, iCIMS, or Taleo listing dat
 - **Test with a small limit** - Begin with `results_wanted: 20` and increase the limit after reviewing the dataset.
 - **Increase pages gradually** - Raise `max_pages` for larger collections, especially when the board has many listings.
 - **Check source availability** - Missing salary, department, location, or date values usually mean the employer did not publish them.
-- **Keep scheduled runs consistent** - Reuse the same URLs and filters when comparing hiring activity over time.
+- **Keep scheduled runs consistent** - Reuse the same URLs and collection limits when comparing hiring activity over time.
 - **Use proxy settings for scale** - Configure Apify Proxy for larger or recurring collections when the target requires it.
 
 ## Integrations and Export Formats
@@ -222,6 +217,14 @@ Yes. Add multiple public career board URLs to `startUrls`. The Actor identifies 
 ### Can I collect from one career board?
 
 Yes. Add one URL as the only item in the `startUrls` array.
+
+### Can it detect an ATS on a company-branded careers URL?
+
+Often. The Actor checks the fetched page for ATS API paths, vendor embed markers, and distinctive job-data fields, even when the provider name is absent from the URL. Pages with only generic job fields cannot identify a provider reliably.
+
+### Does the Actor filter jobs by keyword, location, or posting date?
+
+No. The Actor collects the listings returned by the URLs you provide. It does not apply keyword, location, or posting-date filters. Searching all providers from a query requires a maintained company/board catalog and indexed job store, which this URL-based Actor does not include.
 
 ### Why are some fields missing?
 

@@ -22,7 +22,7 @@
             "apply_url": { "title": "Apply URL", "type": "string", "description": "Direct application link" },
             "description": { "title": "Description", "type": "string", "description": "Job description text" },
             "remote": { "title": "Remote", "type": "boolean", "description": "Whether the position is remote" },
-            "platform": { "title": "Platform", "type": "string", "description": "ATS platform (lever, greenhouse, ashby, etc.)" },
+            "platform": { "title": "Platform", "type": "string", "description": "Detected ATS platform key" },
             "source_host": { "title": "Source Host", "type": "string", "description": "Hostname where the job was sourced from" },
             "scraped_at": { "title": "Scraped At", "type": "string", "description": "Extraction timestamp in ISO format" }
         }

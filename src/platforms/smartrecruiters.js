@@ -31,13 +31,38 @@ const buildSmartRecruitersDescription = (detail) => {
  * API: https://api.smartrecruiters.com/v1/companies/{slug}/postings
  * Response: { content: [...], totalFound: N, offset: 0, limit: 100 }
  */
-export async function scrape({ slug }, { resultsWanted, proxyUrl } = {}) {
+export async function scrape({ slug, prefetchedData }, { resultsWanted, proxyUrl } = {}) {
     const PAGE_SIZE = 100;
     const allJobs = [];
     let offset = 0;
     let totalFound = Infinity;
 
     log.info(`[SmartRecruiters] Fetching jobs for company: ${slug}`);
+
+    const embeddedJobs = prefetchedData?.content ?? prefetchedData?.jobs ?? (Array.isArray(prefetchedData) ? prefetchedData : null);
+    if (Array.isArray(embeddedJobs)) {
+        const limited = resultsWanted ? embeddedJobs.slice(0, resultsWanted) : embeddedJobs;
+        return limited.map((job) => cleanObj({
+            job_id: job.id || null,
+            title: job.name || job.title || null,
+            company: job.company?.name || slug,
+            location: job.location?.fullLocation || job.location?.city || null,
+            city: job.location?.city || null,
+            state: job.location?.region || null,
+            country: job.location?.country || null,
+            department: job.department?.label || null,
+            category: job.department?.id || null,
+            job_type: job.typeOfEmployment?.label || null,
+            workplace_type: job.location?.remote ? 'remote' : 'on-site',
+            date_posted: parseDate(job.releasedDate),
+            updated_at: parseDate(job.updatedDate || job.releasedDate),
+            url: job.url || job.publicUrl || `https://careers.smartrecruiters.com/${slug}/${job.id}`,
+            apply_url: job.applyUrl || job.ref || null,
+            description: buildSmartRecruitersDescription(job),
+            remote: job.location?.remote === true ? true : undefined,
+            platform: 'smartrecruiters',
+        }));
+    }
 
     const sharedOpts = { proxyUrl, origin: 'https://api.smartrecruiters.com', referer: `https://careers.smartrecruiters.com/${slug}/` };
 

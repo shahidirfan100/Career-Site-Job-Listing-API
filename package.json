@@ -2,13 +2,13 @@
     "name": "career-site-jobs-listing-api",
     "version": "1.0.0",
     "type": "module",
-    "description": "Extract job listings from any major ATS career site. Supports Lever, Greenhouse, Ashby, SmartRecruiters, Workable, Recruitee, BreezyHR, BambooHR, Workday, TeamTailor, Personio, JazzHR.",
+    "description": "Extract public job listings from 18 ATS platforms and employer careers pages with URL and page-data detection.",
     "main": "src/main.js",
     "dependencies": {
         "apify": "^3.7.2",
         "cheerio": "^1.2.0",
-        "crawlee": "^3.16.0",
-        "impit": "^0.14.3"
+        "crawlee": "^3.18.1",
+        "impit": "^0.14.5"
     },
     "devDependencies": {
         "@apify/eslint-config": "^2.0.0",

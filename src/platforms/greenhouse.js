@@ -7,16 +7,18 @@ import { cleanObj, fetchJson, parseDate } from '../utils/http.js';
  * API: https://boards-api.greenhouse.io/v1/boards/{slug}/jobs?content=true
  * Response: { jobs: [...], meta: { total: N } }
  */
-export async function scrape({ slug }, { resultsWanted, proxyUrl } = {}) {
+export async function scrape({ slug, prefetchedData }, { resultsWanted, proxyUrl } = {}) {
     const url = `https://boards-api.greenhouse.io/v1/boards/${slug}/jobs?content=true`;
     log.info(`[Greenhouse] Fetching jobs for company: ${slug}`);
 
-    let data;
-    try {
-        data = await fetchJson(url, { proxyUrl, origin: 'https://boards-api.greenhouse.io', referer: `https://boards.greenhouse.io/${slug}` });
-    } catch (err) {
-        log.error(`[Greenhouse] API request failed for ${slug}: ${err.message}`);
-        return [];
+    let data = prefetchedData;
+    if (data === undefined) {
+        try {
+            data = await fetchJson(url, { proxyUrl, origin: 'https://boards-api.greenhouse.io', referer: `https://boards.greenhouse.io/${slug}` });
+        } catch (err) {
+            log.error(`[Greenhouse] API request failed for ${slug}: ${err.message}`);
+            return [];
+        }
     }
 
     const jobs = data?.jobs ?? data?.results ?? [];

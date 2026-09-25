@@ -1,7 +1,7 @@
 import { log } from 'apify';
 import { load as cheerioLoad } from 'cheerio';
 
-import { fetchHtml, fetchXml, parseDate as toIsoDate } from '../utils/http.js';
+import { fetchXml, parseDate as toIsoDate } from '../utils/http.js';
 
 const extractJobId = (url) => {
     if (!url || typeof url !== 'string') return undefined;
@@ -26,22 +26,11 @@ const parseSitemapUrls = (xmlText) => {
     return entries;
 };
 
-const extractDescriptionFromHtml = (html) => {
-    if (!html || typeof html !== 'string') return undefined;
-    const $ = cheerioLoad(html);
-    const selectors = ['[itemprop="description"]', '.iCIMS_JobContent', '.job-content', 'main'];
-    for (const selector of selectors) {
-        const text = $(selector).first().text().replace(/\s+/g, ' ').trim();
-        if (text && text.length > 60) return text;
-    }
-    return undefined;
-};
-
 /**
  * Scrape iCIMS jobs from XML sitemap feeds (API/feed-based only).
  * This avoids HTML selectors and works across many iCIMS portals.
  */
-export async function scrape({ rawUrl, slug }, { resultsWanted = 20, proxyUrl, allowHtmlDetailFallback = false } = {}) {
+export async function scrape({ rawUrl, slug }, { resultsWanted = 20, proxyUrl } = {}) {
     const origins = [];
     if (rawUrl) {
         try {
@@ -120,20 +109,6 @@ export async function scrape({ rawUrl, slug }, { resultsWanted = 20, proxyUrl, a
             ats_family: 'icims',
         };
     });
-
-    if (allowHtmlDetailFallback) {
-        for (const job of jobs) {
-            if (!job.url) continue;
-            try {
-                const response = await fetchHtml(job.url, { proxyUrl, origin: selectedOrigin, referer: `${selectedOrigin}/`, retries: 2 });
-                if ((response.statusCode || 0) >= 400) continue;
-                const description = extractDescriptionFromHtml(String(response.body || ''));
-                if (description) job.description = description;
-            } catch (err) {
-                log.debug(`[iCIMS] HTML fallback failed for ${job.url}: ${err.message}`);
-            }
-        }
-    }
 
     log.info(`[iCIMS] Prepared ${jobs.length} jobs from sitemap feed`);
     return jobs;

@@ -13,21 +13,29 @@ const stripHtml = (value) => {
  * Primary API: GET https://www.workable.com/api/accounts/{slug}?details=true
  * Fallback API: POST https://apply.workable.com/api/v3/accounts/{slug}/jobs
  */
-export async function scrape({ slug }, { resultsWanted, proxyUrl } = {}) {
+export async function scrape({ slug, prefetchedData }, { resultsWanted, proxyUrl } = {}) {
     log.info(`[Workable] Fetching jobs for company: ${slug}`);
 
-    try {
-        const account = await fetchJson(`https://www.workable.com/api/accounts/${slug}?details=true`, {
-            proxyUrl,
-            origin: 'https://www.workable.com',
-            referer: `https://apply.workable.com/${slug}/`,
-        });
-        const jobs = Array.isArray(account?.jobs) ? account.jobs : [];
-        if (jobs.length) {
-            const mapped = jobs.map((j) => cleanObj({
+    let account = prefetchedData;
+    if (account === undefined) {
+        try {
+            account = await fetchJson(`https://www.workable.com/api/accounts/${slug}?details=true`, {
+                proxyUrl,
+                origin: 'https://www.workable.com',
+                referer: `https://apply.workable.com/${slug}/`,
+            });
+        } catch (err) {
+            log.warning(`[Workable] Rich endpoint failed for ${slug}: ${err.message}. Falling back.`);
+        }
+    }
+    let accountJobs = [];
+    if (Array.isArray(account)) accountJobs = account;
+    else if (Array.isArray(account?.jobs)) accountJobs = account.jobs;
+    if (accountJobs.length) {
+        const mapped = accountJobs.map((j) => cleanObj({
                 job_id: j.id || j.shortcode || j.code || null,
                 title: j.title || null,
-                company: account?.name || slug,
+                company: j.company?.name || account?.name || slug,
                 location: [j.city, j.state, j.country].filter(Boolean).join(', ') || null,
                 city: j.city || null,
                 state: j.state || null,
@@ -43,10 +51,7 @@ export async function scrape({ slug }, { resultsWanted, proxyUrl } = {}) {
                 remote: j.telecommuting === true ? true : undefined,
                 platform: 'workable',
             }));
-            return resultsWanted ? mapped.slice(0, resultsWanted) : mapped;
-        }
-    } catch (err) {
-        log.warning(`[Workable] Rich endpoint failed for ${slug}: ${err.message}. Falling back.`);
+        return resultsWanted ? mapped.slice(0, resultsWanted) : mapped;
     }
 
     const url = `https://apply.workable.com/api/v3/accounts/${slug}/jobs`;

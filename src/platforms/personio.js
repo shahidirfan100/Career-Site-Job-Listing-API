@@ -85,43 +85,47 @@ const parseXmlJobs = (xmlText, host, slug) => {
  * Primary: XML Feed (https://{host}/xml)
  * Secondary: JSON API (https://{host}/api/v1/jobs)
  */
-export async function scrape({ slug, rawUrl }, { resultsWanted, proxyUrl } = {}) {
+export async function scrape({ slug, rawUrl, prefetchedData }, { resultsWanted, proxyUrl } = {}) {
     const host = rawUrl ? new URL(rawUrl).hostname : `${slug}.jobs.personio.de`;
     log.info(`[Personio] Fetching jobs for company: ${slug}`);
 
-    // Try XML Feed first (highly reliable, standard for all boards)
-    const xmlUrl = `https://${host}/xml?language=en`;
-    try {
-        log.info(`[Personio] Trying XML Feed: ${xmlUrl}`);
-        const response = await fetchXml(xmlUrl, { proxyUrl, origin: `https://${host}`, referer: `https://${host}/`, retries: 2, timeout: 20_000 });
+    if (prefetchedData === undefined) {
+        // Try XML Feed first (highly reliable, standard for all boards)
+        const xmlUrl = `https://${host}/xml?language=en`;
+        try {
+            log.info(`[Personio] Trying XML Feed: ${xmlUrl}`);
+            const response = await fetchXml(xmlUrl, { proxyUrl, origin: `https://${host}`, referer: `https://${host}/`, retries: 2, timeout: 20_000 });
 
-        if (response.statusCode === 200 && response.body) {
-            const xmlText = String(response.body);
-            if (xmlText.includes('<workzag-jobs>') || xmlText.includes('<position>')) {
-                const xmlJobs = parseXmlJobs(xmlText, host, slug);
-                log.info(`[Personio] Found ${xmlJobs.length} jobs via XML Feed`);
-                return resultsWanted ? xmlJobs.slice(0, resultsWanted) : xmlJobs;
+            if (response.statusCode === 200 && response.body) {
+                const xmlText = String(response.body);
+                if (xmlText.includes('<workzag-jobs>') || xmlText.includes('<position>')) {
+                    const xmlJobs = parseXmlJobs(xmlText, host, slug);
+                    log.info(`[Personio] Found ${xmlJobs.length} jobs via XML Feed`);
+                    return resultsWanted ? xmlJobs.slice(0, resultsWanted) : xmlJobs;
+                }
             }
+        } catch (err) {
+            log.warning(`[Personio] XML Feed failed for ${slug}: ${err.message}. Trying JSON API fallback.`);
         }
-    } catch (err) {
-        log.warning(`[Personio] XML Feed failed for ${slug}: ${err.message}. Trying JSON API fallback.`);
     }
 
-    // Fallback to JSON API
-    const jsonUrl = `https://${host}/api/v1/jobs?language=en`;
-    let data;
-    try {
-        log.info(`[Personio] Trying JSON API: ${jsonUrl}`);
-        data = await fetchJson(jsonUrl, { proxyUrl, origin: `https://${host}`, referer: `https://${host}/` });
-    } catch {
-        // Fallback domain for JSON API
-        const fallbackJsonUrl = `https://${slug}.jobs.personio.de/api/v1/jobs?language=en`;
+    let data = prefetchedData;
+    if (data === undefined) {
+        // Fallback to JSON API
+        const jsonUrl = `https://${host}/api/v1/jobs?language=en`;
         try {
-            log.info(`[Personio] Trying Fallback JSON API: ${fallbackJsonUrl}`);
-            data = await fetchJson(fallbackJsonUrl, { proxyUrl, origin: `https://${slug}.jobs.personio.de`, referer: `https://${slug}.jobs.personio.de/` });
-        } catch (err2) {
-            log.error(`[Personio] Both XML and JSON API failed for ${slug}: ${err2.message}`);
-            return [];
+            log.info(`[Personio] Trying JSON API: ${jsonUrl}`);
+            data = await fetchJson(jsonUrl, { proxyUrl, origin: `https://${host}`, referer: `https://${host}/` });
+        } catch {
+            // Fallback domain for JSON API
+            const fallbackJsonUrl = `https://${slug}.jobs.personio.de/api/v1/jobs?language=en`;
+            try {
+                log.info(`[Personio] Trying Fallback JSON API: ${fallbackJsonUrl}`);
+                data = await fetchJson(fallbackJsonUrl, { proxyUrl, origin: `https://${slug}.jobs.personio.de`, referer: `https://${slug}.jobs.personio.de/` });
+            } catch (err2) {
+                log.error(`[Personio] Both XML and JSON API failed for ${slug}: ${err2.message}`);
+                return [];
+            }
         }
     }
 

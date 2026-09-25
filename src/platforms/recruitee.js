@@ -13,19 +13,21 @@ const stripHtml = (value) => {
  * API: https://{slug}.recruitee.com/api/offers
  * Response: { offers: [...] }
  */
-export async function scrape({ slug }, { resultsWanted, proxyUrl } = {}) {
+export async function scrape({ slug, prefetchedData }, { resultsWanted, proxyUrl } = {}) {
     const url = `https://${slug}.recruitee.com/api/offers`;
     log.info(`[Recruitee] Fetching jobs for company: ${slug}`);
 
-    let data;
-    try {
-        data = await fetchJson(url, { proxyUrl, origin: `https://${slug}.recruitee.com`, referer: `https://${slug}.recruitee.com/` });
-    } catch (err) {
-        log.error(`[Recruitee] API failed for ${slug}: ${err.message}`);
-        return [];
+    let data = prefetchedData;
+    if (data === undefined) {
+        try {
+            data = await fetchJson(url, { proxyUrl, origin: `https://${slug}.recruitee.com`, referer: `https://${slug}.recruitee.com/` });
+        } catch (err) {
+            log.error(`[Recruitee] API failed for ${slug}: ${err.message}`);
+            return [];
+        }
     }
 
-    const offers = data?.offers ?? [];
+    const offers = Array.isArray(data) ? data : data?.offers ?? data?.jobs ?? data?.results ?? [];
     if (!Array.isArray(offers)) {
         log.warning(`[Recruitee] Unexpected response. Keys: ${Object.keys(data || {}).join(', ')}`);
         return [];

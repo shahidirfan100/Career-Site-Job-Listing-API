@@ -7,16 +7,18 @@ import { cleanObj, fetchJson, parseDate } from '../utils/http.js';
  * API: https://api.ashbyhq.com/posting-api/job-board/{slug}
  * Response: { jobs: [...], apiVersion: "1" }
  */
-export async function scrape({ slug }, { resultsWanted, proxyUrl } = {}) {
+export async function scrape({ slug, prefetchedData }, { resultsWanted, proxyUrl } = {}) {
     const url = `https://api.ashbyhq.com/posting-api/job-board/${slug}`;
     log.info(`[Ashby] Fetching jobs for company: ${slug}`);
 
-    let data;
-    try {
-        data = await fetchJson(url, { proxyUrl, origin: 'https://api.ashbyhq.com', referer: `https://jobs.ashbyhq.com/${slug}` });
-    } catch (err) {
-        log.error(`[Ashby] API request failed for ${slug}: ${err.message}`);
-        return [];
+    let data = prefetchedData;
+    if (data === undefined) {
+        try {
+            data = await fetchJson(url, { proxyUrl, origin: 'https://api.ashbyhq.com', referer: `https://jobs.ashbyhq.com/${slug}` });
+        } catch (err) {
+            log.error(`[Ashby] API request failed for ${slug}: ${err.message}`);
+            return [];
+        }
     }
 
     const jobs = data?.jobs ?? [];

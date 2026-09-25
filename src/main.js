@@ -7,17 +7,43 @@ import { scrape as scrapeBreezyHR } from './platforms/breezyhr.js';
 import { scrape as scrapeGreenhouse } from './platforms/greenhouse.js';
 import { scrape as scrapeICIMS } from './platforms/icims.js';
 import { scrape as scrapeJazzHR } from './platforms/jazzhr.js';
+import { scrape as scrapeJobvite } from './platforms/jobvite.js';
 import { scrape as scrapeLever } from './platforms/lever.js';
+import { scrape as scrapeManatal } from './platforms/manatal.js';
 import { scrape as scrapePersonio } from './platforms/personio.js';
+import { scrape as scrapePinpoint } from './platforms/pinpoint.js';
 import { scrape as scrapeRecruitee } from './platforms/recruitee.js';
+import { scrape as scrapeRippling } from './platforms/rippling.js';
 import { scrape as scrapeSmartRecruiters } from './platforms/smartrecruiters.js';
 import { scrape as scrapeTaleo } from './platforms/taleo.js';
 import { scrape as scrapeTeamTailor } from './platforms/teamtailor.js';
 import { scrape as scrapeWorkable } from './platforms/workable.js';
 import { scrape as scrapeWorkday } from './platforms/workday.js';
 import { detectPlatform } from './utils/detector.js';
+import { discoverPlatform } from './utils/discovery.js';
 
 await Actor.init();
+
+const platformScrapers = {
+    ashby: scrapeAshby,
+    bamboohr: scrapeBambooHR,
+    breezyhr: scrapeBreezyHR,
+    greenhouse: scrapeGreenhouse,
+    icims: scrapeICIMS,
+    jobvite: scrapeJobvite,
+    jazzhr: scrapeJazzHR,
+    lever: scrapeLever,
+    manatal: scrapeManatal,
+    pinpoint: scrapePinpoint,
+    personio: scrapePersonio,
+    recruitee: scrapeRecruitee,
+    rippling: scrapeRippling,
+    smartrecruiters: scrapeSmartRecruiters,
+    taleo: scrapeTaleo,
+    teamtailor: scrapeTeamTailor,
+    workable: scrapeWorkable,
+    workday: scrapeWorkday,
+};
 
 const TRACKING_QUERY_PARAMS = new Set([
     'utm_source',
@@ -215,14 +241,12 @@ async function main() {
         results_wanted: resultsWantedRaw = 20,
         max_pages: maxPages = 5,
         proxyConfiguration: proxyInput,
-        keyword = '',
-        location = '',
-        postedWithin = 'anytime',
-        allow_html_detail_fallback: allowHtmlDetailFallbackRaw = false,
     } = input;
 
-    const resultsWanted = Math.max(1, Number.isFinite(+resultsWantedRaw) ? +resultsWantedRaw : 20);
-    const maxPagesNum = Math.max(1, Number.isFinite(+maxPages) ? +maxPages : 5);
+    const requestedResults = Number(resultsWantedRaw);
+    const requestedPages = Number(maxPages);
+    const resultsWanted = Number.isFinite(requestedResults) ? Math.max(1, Math.trunc(requestedResults)) : 20;
+    const maxPagesNum = Number.isFinite(requestedPages) ? Math.max(1, Math.trunc(requestedPages)) : 5;
 
     const urlCandidates = Array.isArray(startUrls)
         ? startUrls.filter((value) => typeof value === 'string' && value.trim() !== '').map((value) => value.trim())
@@ -233,7 +257,7 @@ async function main() {
     const uniqueUrls = [...new Set(urlCandidates)];
 
     if (!uniqueUrls.length) {
-        log.error('No input URLs provided. Please add one or more career board URLs in startUrls (or startUrl).');
+        log.error('Add at least one career board or careers-page URL. This Actor collects listings from the URLs you provide.');
         await Actor.exit({ exitCode: 1 });
         return;
     }
@@ -251,10 +275,6 @@ async function main() {
         maxPages: maxPagesNum,
         proxyUrl,
         proxyConfiguration,
-        keyword,
-        location,
-        postedWithin,
-        allowHtmlDetailFallback: Boolean(allowHtmlDetailFallbackRaw),
     };
 
     let totalSaved = 0;
@@ -269,9 +289,12 @@ async function main() {
             await new Promise((r) => { setTimeout(r, delayMs); });
         }
         urlIndex++;
-        const detected = detectPlatform(candidateUrl);
+        let detected = detectPlatform(candidateUrl);
         if (!detected) {
-            log.error(`Could not detect the ATS platform from URL: ${candidateUrl}`);
+            detected = await discoverPlatform(candidateUrl, { proxyUrl });
+        }
+        if (!detected) {
+            log.warning(`No supported ATS was found in the supplied URL or its career-page links: ${candidateUrl}`);
             continue;
         }
 
@@ -280,52 +303,13 @@ async function main() {
 
         let jobs = [];
         try {
-            switch (platform) {
-                case 'lever':
-                    jobs = await scrapeLever(detected, opts);
-                    break;
-                case 'greenhouse':
-                    jobs = await scrapeGreenhouse(detected, opts);
-                    break;
-                case 'ashby':
-                    jobs = await scrapeAshby(detected, opts);
-                    break;
-                case 'smartrecruiters':
-                    jobs = await scrapeSmartRecruiters(detected, opts);
-                    break;
-                case 'workable':
-                    jobs = await scrapeWorkable(detected, opts);
-                    break;
-                case 'recruitee':
-                    jobs = await scrapeRecruitee(detected, opts);
-                    break;
-                case 'bamboohr':
-                    jobs = await scrapeBambooHR(detected, opts);
-                    break;
-                case 'breezyhr':
-                    jobs = await scrapeBreezyHR(detected, opts);
-                    break;
-                case 'workday':
-                    jobs = await scrapeWorkday(detected, opts);
-                    break;
-                case 'teamtailor':
-                    jobs = await scrapeTeamTailor(detected, opts);
-                    break;
-                case 'personio':
-                    jobs = await scrapePersonio(detected, opts);
-                    break;
-                case 'jazzhr':
-                    jobs = await scrapeJazzHR(detected, opts);
-                    break;
-                case 'icims':
-                    jobs = await scrapeICIMS(detected, opts);
-                    break;
-                case 'taleo':
-                    jobs = await scrapeTaleo(detected, opts);
-                    break;
-                default:
-                    log.error(`Platform "${platform}" is detected but not yet implemented.`);
+            const scraper = platformScrapers[platform];
+            if (!scraper) {
+                log.warning(`Platform "${platform}" is detected but has no adapter.`);
+                continue;
             }
+            const remaining = Math.max(1, resultsWanted - totalSaved);
+            jobs = await scraper(detected, { ...opts, resultsWanted: remaining });
         } catch (err) {
             log.error(`Scraping failed for ${platform} (${slug}): ${err.message}`);
         }

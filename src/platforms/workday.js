@@ -4,17 +4,9 @@ import { load as cheerioLoad } from 'cheerio';
 import { fetchJson } from '../utils/http.js';
 
 const DEFAULT_PAGE_LIMIT = 20;
-const MAX_PAGES_CAP = 500;
 const LIST_REQUEST_RETRIES = 4;
 const DETAIL_REQUEST_RETRIES = 3;
 const DETAIL_CONCURRENCY = 6;
-const MS_IN_DAY = 24 * 60 * 60 * 1000;
-
-const LOCATION_ALIASES = {
-    'united states of america': ['united states', 'usa'],
-    'united states': ['united states of america', 'usa'],
-    usa: ['united states', 'united states of america'],
-};
 
 const dedupeStrings = (values) => [...new Set(
     (values || []).filter((v) => typeof v === 'string').map((v) => v.trim()).filter(Boolean),
@@ -98,71 +90,13 @@ const deriveConfigFromUrl = (rawUrl) => {
     };
 };
 
-const buildSearchPayload = ({ keyword, offset, limit }) => ({
+const buildSearchPayload = ({ offset, limit }) => ({
     appliedFacets: {},
     limit,
     offset,
-    searchText: keyword || '',
+    searchText: '',
     userSelectedLanguage: 'en',
 });
-
-const normalizeForMatch = (value) => String(value || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
-
-const buildLocationNeedles = (location) => {
-    const normalized = normalizeForMatch(location);
-    if (!normalized) return [];
-    const needles = new Set([normalized]);
-    for (const alias of (LOCATION_ALIASES[normalized] || [])) {
-        const n = normalizeForMatch(alias);
-        if (n) needles.add(n);
-    }
-    return [...needles];
-};
-
-const shouldIncludeByLocation = ({ locationNeedles, locationValues, allowUnknown = false }) => {
-    if (!locationNeedles.length) return true;
-    const candidates = (locationValues || []).map((v) => normalizeForMatch(v)).filter(Boolean);
-    if (!candidates.length) return allowUnknown;
-    return candidates.some((c) => locationNeedles.some((n) => c.includes(n) || n.includes(c)));
-};
-
-const parsePostedRelativeDays = (value) => {
-    if (!value || typeof value !== 'string') return null;
-    const normalized = value.trim().toLowerCase();
-    if (normalized.includes('posted today')) return 0;
-    if (normalized.includes('posted yesterday')) return 1;
-    const match = normalized.match(/posted\s+(\d+)\+?\s+(hour|hours|day|days|week|weeks|month|months|year|years)/i);
-    if (!match) return null;
-    const amount = Number(match[1]);
-    if (!Number.isFinite(amount)) return null;
-    switch (match[2]) {
-        case 'hour': case 'hours': return amount / 24;
-        case 'day': case 'days': return amount;
-        case 'week': case 'weeks': return amount * 7;
-        case 'month': case 'months': return amount * 30;
-        case 'year': case 'years': return amount * 365;
-        default: return null;
-    }
-};
-
-const calcPostedDiffDays = (job, jobPostingInfo) => {
-    for (const candidate of [jobPostingInfo?.startDate, jobPostingInfo?.postedOn, job?.postedOn]) {
-        if (!candidate || typeof candidate !== 'string') continue;
-        const trimmed = candidate.trim();
-        if (!trimmed) continue;
-        const timestamp = Date.parse(trimmed);
-        if (!Number.isNaN(timestamp)) return Math.max(0, (Date.now() - timestamp) / MS_IN_DAY);
-        const rel = parsePostedRelativeDays(trimmed);
-        if (rel !== null) return rel;
-    }
-    return null;
-};
-
-const shouldIncludeByPostedWithin = ({ job, jobPostingInfo, maxAgeDays }) => {
-    if (!Number.isFinite(maxAgeDays)) return true;
-    const diff = calcPostedDiffDays(job, jobPostingInfo);
-    return diff === null || diff <= maxAgeDays;
-};
 
 const extractIsoDate = (value) => {
     if (!value) return null;
@@ -239,20 +173,45 @@ const deriveJobUrls = ({ requestUrl, meta, job }) => {
  * Scrape jobs from Workday via direct API calls — NO browser needed.
  * Workday exposes /wday/cxs/{tenant}/{board}/jobs as a POST endpoint.
  */
-export async function scrape({ slug: _slug, board: _board, rawUrl }, { resultsWanted = 20, maxPages = 5, proxyConfiguration, keyword = '', location = '', postedWithin = 'anytime' } = {}) {
-    const POSTED_WITHIN_WINDOWS = { anytime: Infinity, '24h': 1, '7d': 7, '30d': 30, '60d': 60, '90d': 90 };
-    const postedWindowDays = POSTED_WITHIN_WINDOWS[postedWithin?.toLowerCase()] ?? Infinity;
-    const locationNeedles = buildLocationNeedles(location);
-    const normalizedKeyword = typeof keyword === 'string' ? keyword.trim() : '';
-    const keywordPhrase = normalizeForMatch(normalizedKeyword);
-    const keywordTokens = keywordPhrase ? keywordPhrase.split(' ').filter(Boolean) : [];
+export async function scrape({ slug: _slug, board: _board, rawUrl, prefetchedData }, { resultsWanted = 20, maxPages = 5, proxyConfiguration } = {}) {
+    const embeddedJobs = prefetchedData?.jobPostings;
+    if (Array.isArray(embeddedJobs)) {
+        let sourceUrl;
+        try { sourceUrl = new URL(rawUrl); } catch { sourceUrl = null; }
+        return embeddedJobs.slice(0, resultsWanted).map((job) => {
+            const info = job.jobPostingInfo || {};
+            const externalPath = job.externalPath || job.externalUrl || info.externalUrl;
+            let jobUrl = null;
+            if (typeof externalPath === 'string' && sourceUrl) {
+                try { jobUrl = new URL(externalPath, sourceUrl).href; } catch { /* Keep URL empty when invalid. */ }
+            }
+            const locationResolved = resolveLocation({ job, detailInfo: info });
+            return pruneEmpty({
+                job_id: job.jobPostingId || job.id || job.jobReqId,
+                title: job.title,
+                company: info.company || _slug,
+                location: job.locationsText || job.location,
+                city: locationResolved.city,
+                state: locationResolved.state,
+                country: locationResolved.country,
+                department: info.department,
+                job_type: info.timeType,
+                date_posted: extractIsoDate(info.startDate || info.postedOn || job.postedOn),
+                url: jobUrl,
+                apply_url: info.externalUrl || job.thirdPartyApplyUrl || jobUrl,
+                description: cleanText(info.jobDescription || ''),
+                remote: job.remoteEligible || info.remoteType,
+                salary: info.compensation || null,
+                platform: 'workday',
+            });
+        }).filter(Boolean);
+    }
 
     log.info(`[Workday] Starting API-based scrape for: ${rawUrl}`);
 
     let config;
     try {
         config = deriveConfigFromUrl(rawUrl);
-        config.keyword = normalizedKeyword;
     } catch (err) {
         log.error(`[Workday] Could not derive API config from URL: ${err.message}`);
         return [];
@@ -265,8 +224,6 @@ export async function scrape({ slug: _slug, board: _board, rawUrl }, { resultsWa
     let limit = DEFAULT_PAGE_LIMIT;
     const seen = new Set();
     const allRecords = [];
-    const safeMaxPages = Math.min(maxPages, MAX_PAGES_CAP);
-
     const makeOpts = async (overrides = {}) => ({
         proxyUrl: proxyConfiguration ? await proxyConfiguration.newUrl() : undefined,
         origin: config.origin,
@@ -275,8 +232,8 @@ export async function scrape({ slug: _slug, board: _board, rawUrl }, { resultsWa
         ...overrides,
     });
 
-    while (saved < resultsWanted && page < safeMaxPages && (total === null || offset < total)) {
-        const payload = buildSearchPayload({ keyword: normalizedKeyword, offset, limit });
+    while (saved < resultsWanted && page < maxPages && (total === null || offset < total)) {
+        const payload = buildSearchPayload({ offset, limit });
         let listData = null;
         let listError = null;
         const listUrlCandidates = dedupeStrings([config.jobsUrl, ...(config.jobsUrlCandidates || [])]);
@@ -315,19 +272,11 @@ export async function scrape({ slug: _slug, board: _board, rawUrl }, { resultsWa
         if (!jobs.length) break;
         log.info(`[Workday] Page ${page + 1}: got ${jobs.length} listings (total: ${total ?? '?'})`);
 
-        // Filter candidates
+        // Deduplicate candidates before requesting detail records.
         const candidates = [];
         for (const job of jobs) {
             if (saved + candidates.length >= resultsWanted) break;
             const jobPostingInfo = job.jobPostingInfo || {};
-            if (normalizedKeyword && keywordPhrase) {
-                const normalizedTitle = normalizeForMatch(job.title);
-                if (!normalizedTitle) continue;
-                const hasPhrase = normalizedTitle.includes(keywordPhrase);
-                const hasAll = keywordTokens.every((t) => normalizedTitle.includes(t));
-                if (!hasPhrase && !hasAll) continue;
-            }
-            if (!shouldIncludeByPostedWithin({ job, jobPostingInfo, maxAgeDays: postedWindowDays })) continue;
             const { jobApiUrl, jobPublicUrl, postingId } = deriveJobUrls({ requestUrl: config.jobsUrl, meta: config, job });
             const dedupeKey = postingId || jobPublicUrl || jobApiUrl;
             if (dedupeKey) { if (seen.has(dedupeKey)) continue; seen.add(dedupeKey); }
@@ -350,18 +299,6 @@ export async function scrape({ slug: _slug, board: _board, rawUrl }, { resultsWa
                     : jobPostingInfo;
                 const hiringOrg = detailPayload?.hiringOrganization || null;
                 const locationResolved = resolveLocation({ job, detailInfo });
-
-                if (!shouldIncludeByLocation({
-                    locationNeedles,
-                    allowUnknown: true,
-                    locationValues: [
-                        job.locationsText,
-                        typeof job.location === 'string' ? job.location : job.location?.descriptor,
-                        typeof jobPostingInfo.location === 'string' ? jobPostingInfo.location : jobPostingInfo.location?.descriptor,
-                        detailInfo.country?.descriptor,
-                        locationResolved.city, locationResolved.state, locationResolved.country,
-                    ],
-                })) return null;
 
                 const descriptionHtml = detailInfo.jobDescription || '';
                 const postedIso = extractIsoDate(detailInfo.startDate || detailInfo.postedOn || job.postedOn);

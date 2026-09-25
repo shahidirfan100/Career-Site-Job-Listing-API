@@ -1,17 +1,18 @@
 {
     "title": "Career Site Job Listing API",
-    "description": "Extract job listings from any major career site. Paste a job board URL and the actor auto-detects the platform.",
+    "description": "Extract public listings from 18 ATS platforms. Paste board or company careers URLs for URL, page-markup, and embedded-data detection.",
     "type": "object",
     "schemaVersion": 1,
     "properties": {
         "startUrls": {
             "title": "Job Board URLs",
             "type": "array",
-            "description": "Add one or more supported career board URLs.",
+            "description": "Add public ATS boards or employer careers pages. Pages are checked for ATS links, embedded endpoints, vendor markers, and recognizable public job-data schemas.",
             "editor": "stringList",
             "prefill": [
                 "https://jobs.lever.co/spotify"
             ],
+            "minItems": 1,
             "items": {
                 "type": "string"
             }
@@ -28,19 +29,11 @@
         "max_pages": {
             "title": "Maximum pages",
             "type": "integer",
-            "description": "Safety cap on number of API pages to fetch.",
+            "description": "Maximum number of API pages to fetch per paginated board. No fixed upper limit is imposed by the Actor.",
             "minimum": 1,
             "default": 5,
             "prefill": 5,
             "editor": "number"
-        },
-        "allow_html_detail_fallback": {
-            "title": "Allow HTML detail fallback (BreezyHR/iCIMS/Taleo only)",
-            "type": "boolean",
-            "description": "When enabled, fetches job detail pages only for boards that may miss API description fields.",
-            "default": false,
-            "prefill": false,
-            "editor": "checkbox"
         },
         "proxyConfiguration": {
             "title": "Proxy configuration",
@@ -52,6 +45,6 @@
             }
         }
     },
-    "required": [],
+    "required": ["startUrls"],
     "additionalProperties": false
 }

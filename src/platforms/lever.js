@@ -7,18 +7,20 @@ import { cleanObj, fetchJson, parseDate } from '../utils/http.js';
  * API: https://api.lever.co/v0/postings/{slug}?mode=json
  * Returns all jobs in a single call (no pagination needed).
  */
-export async function scrape({ slug, isEU = false }, { resultsWanted, proxyUrl } = {}) {
+export async function scrape({ slug, isEU = false, prefetchedData }, { resultsWanted, proxyUrl } = {}) {
     const base = isEU ? 'https://api.eu.lever.co' : 'https://api.lever.co';
     const url = `${base}/v0/postings/${slug}?mode=json`;
 
     log.info(`[Lever] Fetching jobs for company: ${slug}`);
 
-    let postings;
-    try {
-        postings = await fetchJson(url, { proxyUrl, origin: 'https://jobs.lever.co', referer: `https://jobs.lever.co/${slug}` });
-    } catch (err) {
-        log.error(`[Lever] API request failed for ${slug}: ${err.message}`);
-        return [];
+    let postings = prefetchedData;
+    if (postings === undefined) {
+        try {
+            postings = await fetchJson(url, { proxyUrl, origin: 'https://jobs.lever.co', referer: `https://jobs.lever.co/${slug}` });
+        } catch (err) {
+            log.error(`[Lever] API request failed for ${slug}: ${err.message}`);
+            return [];
+        }
     }
 
     if (!Array.isArray(postings)) {

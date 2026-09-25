@@ -16,6 +16,10 @@ export function detectPlatform(rawUrl) {
         const slug = parts[0];
         if (slug) return { platform: 'lever', slug, isEU: host === 'jobs.eu.lever.co' };
     }
+    if (host === 'api.lever.co' || host === 'api.eu.lever.co') {
+        const slug = parts[0] === 'v0' && parts[1] === 'postings' ? parts[2] : null;
+        if (slug) return { platform: 'lever', slug, isEU: host === 'api.eu.lever.co', rawUrl };
+    }
 
     // ── Greenhouse ──────────────────────────────────────────────────────────
     if (host === 'job-boards.greenhouse.io' || host === 'boards.greenhouse.io') {
@@ -26,17 +30,76 @@ export function detectPlatform(rawUrl) {
         }
         if (slug) return { platform: 'greenhouse', slug };
     }
+    if (host === 'boards-api.greenhouse.io') {
+        const slug = parts[0] === 'v1' && parts[1] === 'boards' ? parts[2] : null;
+        if (slug) return { platform: 'greenhouse', slug, rawUrl };
+    }
+
+    // ── Manatal ────────────────────────────────────────────────────────────
+    if (host === 'api.manatal.com' || host === 'core.api.manatal.com') {
+        const careerPageIndex = parts.findIndex((part) => part.toLowerCase() === 'career-page');
+        const slug = careerPageIndex >= 0 ? parts[careerPageIndex + 1] : null;
+        if (slug) return { platform: 'manatal', slug, clientSlug: slug, rawUrl };
+    }
+    if (host === 'careers.manatal.com') {
+        return { platform: 'manatal', slug: 'manatal', clientSlug: 'manatal', rawUrl };
+    }
+    if (host === 'careers-page.com' || host === 'www.careers-page.com' || host.endsWith('.careers-page.com')) {
+        const tenantFromHost = host.endsWith('.careers-page.com') && host !== 'www.careers-page.com'
+            ? host.replace(/\.careers-page\.com$/, '')
+            : null;
+        const slug = parts[0] || tenantFromHost;
+        if (slug && slug.toLowerCase() !== 'jobs') {
+            return { platform: 'manatal', slug, clientSlug: slug, rawUrl };
+        }
+    }
 
     // ── Ashby ────────────────────────────────────────────────────────────────
     if (host === 'jobs.ashbyhq.com') {
         const slug = parts[0];
         if (slug) return { platform: 'ashby', slug };
     }
+    if (host === 'api.ashbyhq.com' && parts[0] === 'posting-api' && parts[1] === 'job-board') {
+        const slug = parts[2];
+        if (slug) return { platform: 'ashby', slug, rawUrl };
+    }
 
     // ── SmartRecruiters ─────────────────────────────────────────────────────
     if (host === 'careers.smartrecruiters.com' || host === 'jobs.smartrecruiters.com') {
         const slug = parts[0];
         if (slug) return { platform: 'smartrecruiters', slug };
+    }
+
+    // ── Jobvite ─────────────────────────────────────────────────────────────
+    if (host === 'jobs.jobvite.com') {
+        const slug = parts[0];
+        if (slug) return { platform: 'jobvite', slug, rawUrl };
+    }
+    if (host === 'app.jobvite.com' && parts[0]?.toLowerCase() === 'companyjobs') {
+        const companyEId = u.searchParams.get('c');
+        if (parts[1]?.toLowerCase() === 'xml.aspx' && companyEId) {
+            return { platform: 'jobvite', slug: companyEId, companyEId, feedUrl: rawUrl, rawUrl };
+        }
+    }
+
+    // ── Rippling ────────────────────────────────────────────────────────────
+    if (host === 'ats.rippling.com') {
+        const loweredParts = parts.map((part) => part.toLowerCase());
+        const jobsIndex = loweredParts.indexOf('jobs');
+        const slugIndex = jobsIndex - 1;
+        if (jobsIndex > 0 && parts[slugIndex]) {
+            return { platform: 'rippling', slug: parts[slugIndex], rawUrl };
+        }
+    }
+    if (host === 'api.rippling.com' && parts[0] === 'platform' && parts[1] === 'api' && parts[2] === 'ats' && parts[3] === 'v1' && parts[4] === 'board') {
+        const slug = parts[5];
+        if (slug) return { platform: 'rippling', slug, rawUrl };
+    }
+
+    // ── Pinpoint ────────────────────────────────────────────────────────────
+    if (host.endsWith('.pinpointhq.com')) {
+        const slug = host.replace(/\.pinpointhq\.com$/, '');
+        if (slug && slug !== 'www') return { platform: 'pinpoint', slug, rawUrl };
     }
 
     // ── Workable ─────────────────────────────────────────────────────────────
@@ -131,7 +194,7 @@ export function detectPlatform(rawUrl) {
     }
 
     // ── Workday CXS direct API URLs ─────────────────────────────────────────
-    if (parts[0] === 'wday' && parts[1] === 'cxs') {
+    if (parts[0]?.toLowerCase() === 'wday' && parts[1]?.toLowerCase() === 'cxs') {
         const slug = parts[2];
         const board = parts[3] || 'Careers';
         if (slug) {
@@ -183,14 +246,6 @@ export function detectPlatform(rawUrl) {
         const slug = host.replace('.teamtailor.net', '');
         if (slug) return { platform: 'teamtailor', slug, rawUrl };
     }
-    // careers.{slug}.com — only match when subdomain has typical TeamTailor names
-    if (host.startsWith('careers.') && parts.length >= 1 && /^careers\.(?!google|amazon|microsoft|apple|meta|facebook|linkedin|indeed|glassdoor|monster|simplyhired|ziprecruiter)/i.test(host)) {
-        const slug = host.split('.')[1];
-        if (slug && parts[0].match(/^(jobs?|careers?|positions?|vacancies?)$/i)) {
-            return { platform: 'teamtailor', slug, rawUrl };
-        }
-    }
-
     // ── Personio ─────────────────────────────────────────────────────────────
     if (host.endsWith('.personio.de') || host.endsWith('.personio.com')) {
         const slug = host.split('.')[0];
@@ -198,6 +253,10 @@ export function detectPlatform(rawUrl) {
     }
 
     // ── JazzHR ───────────────────────────────────────────────────────────────
+    if (host === 'app.jazz.co' && parts[0]?.toLowerCase() === 'feeds' && parts[1]?.toLowerCase() === 'export' && parts[2]?.toLowerCase() === 'jobs') {
+        const slug = parts[3];
+        if (slug) return { platform: 'jazzhr', slug, feedUrl: rawUrl, rawUrl };
+    }
     if (host.endsWith('.jazz.co')) {
         const slug = host.replace('.jazz.co', '');
         if (slug) return { platform: 'jazzhr', slug };
